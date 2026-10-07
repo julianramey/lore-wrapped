@@ -83,6 +83,8 @@ export async function parseCodexFile(df: DiscoveredFile): Promise<FileOutcome> {
   let planModeTurns = 0
   let plan: string | undefined
   const samples: [number, number, number][] = []
+  // task durations by turn id: a subagent's own work, or a main thread's turns a subagent may replay
+  const time: [string, number][] = []
   // Codex repeats a token_count when nothing new was billed, and a fork replays its parent's
   // counts. A call is new only when the running total moves, and it's keyed by that running
   // total, so a replayed copy in another file lands on the same key.
@@ -127,8 +129,13 @@ export async function parseCodexFile(df: DiscoveredFile): Promise<FileOutcome> {
     df.file,
     (head, ln) => {
       if (ln === 1) return true
+      // tool output and reasoning are skipped, but their times say the agent was still working
+      if (!subagent && head.includes('"type":"response_item"') && !/"role":"(?!assistant")/.test(head)) {
+        const at = /^\{"timestamp":"([^"]+)"/.exec(head)
+        if (at) b.tick(Date.parse(at[1]) || 0)
+      }
       if (head.includes('"type":"token_usage_record"')) return true
-      if (subagent) return head.includes('"type":"turn_context"') || head.includes('"type":"token_count"')
+      if (subagent) return head.includes('"type":"turn_context"') || /"type":"(token_count|task_complete|turn_aborted)"/.test(head)
       if (head.includes('"type":"response_item"')) {
         if (/"payload":\{"type":"(function_call|custom_tool_call)_output"/.test(head)) return [...pendingTests].some((id) => head.includes(id))
         return /"payload":\{"type":"(message|function_call|custom_tool_call|local_shell_call)"/.test(head)
@@ -151,6 +158,7 @@ export async function parseCodexFile(df: DiscoveredFile): Promise<FileOutcome> {
           if ((meta.source && typeof meta.source === 'object' && meta.source.subagent) || meta.thread_source === 'subagent') subagent = true
         } else if (o.id && o.timestamp) {
           legacy = true
+          b.clock = false
           meta = { id: o.id, timestamp: o.timestamp, git: o.git }
           legacyStart = Date.parse(o.timestamp) || df.mtimeMs
         }
@@ -178,10 +186,19 @@ export async function parseCodexFile(df: DiscoveredFile): Promise<FileOutcome> {
         }
         if (o.type === 'event_msg') {
           const p = o.payload || {}
-          if (p.type === 'turn_aborted') b.interrupt()
-          else if (p.type === 'task_complete') b.agentDuration(Number(p.duration_ms) || 0)
-          else if (p.type === 'task_started' && p.collaboration_mode_kind === 'plan') planModeTurns++
-          else if (p.type === 'token_count') {
+          if (p.type === 'task_complete' || p.type === 'turn_aborted') {
+            // an interrupted task still ran until you stopped it; newer Codex records how long
+            const ms = Number(p.duration_ms) || 0
+            if (p.turn_id) time.push([String(p.turn_id), ms])
+            if (subagent) return
+            if (p.type === 'turn_aborted') b.interrupt()
+            b.agentDuration(ms, t)
+            b.turnEnd(t)
+          } else if (p.type === 'task_started') {
+            if (subagent) return
+            b.turnStart(t)
+            if (p.collaboration_mode_kind === 'plan') planModeTurns++
+          } else if (p.type === 'token_count') {
             const u = p.info?.last_token_usage
             const tot = p.info?.total_token_usage
             if (u && pending && same(pending.u, u)) pending = null
@@ -238,7 +255,7 @@ export async function parseCodexFile(df: DiscoveredFile): Promise<FileOutcome> {
   flush()
   // forks and subagents replay their ancestors' usage; the scan matches replays within a lineage only
   const lineage = meta?.id ? { id: String(meta.id), parent: meta.forked_from_id || meta.parent_thread_id || (meta.session_id && meta.session_id !== meta.id ? meta.session_id : undefined) } : undefined
-  if (subagent) return { kind: 'subagent', usage: { rows: usage, lineage } }
+  if (subagent) return { kind: 'subagent', usage: { rows: usage, lineage, time } }
   if (!meta) return bad ? { kind: 'error', message: 'unreadable session metadata' } : { kind: 'empty' }
   const events = b.finish()
   if (!events.some((e) => e.k === 'h')) return { kind: 'empty', usage: { rows: usage, lineage } }
@@ -274,7 +291,7 @@ export async function parseCodexFile(df: DiscoveredFile): Promise<FileOutcome> {
     limits: samples.length ? { plan, samples } : undefined,
     warnings: bad ? [`${bad} unparseable lines skipped`] : [],
   }
-  return { kind: 'thread', thread, usage: { rows: usage, lineage } }
+  return { kind: 'thread', thread, usage: { rows: usage, lineage, time } }
 }
 
 /** Codex keeps human-readable thread names in a small index next to the transcripts. */

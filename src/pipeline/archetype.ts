@@ -97,7 +97,7 @@ const DEFS: Def[] = [
   },
   {
     key: 'foreman', name: 'The Foreman', tagline: 'You give the order; the crew works for an hour.', spectrum: 'leash', pole: 1, weight: 1,
-    description: (r) => `Each prompt bought ${r.deep.work.agentMinutesPerPrompt.toFixed(1)} minutes of agent work, ${n(r.deep.work.agentHours)} hours in total.`,
+    description: (r) => `Each prompt bought ${r.deep.work.agentMinutesPerPrompt.toFixed(1)} minutes of agent work, ${n(r.deep.work.agentHours)}${r.deep.work.agentHoursFloor ? '+ hours on record' : ' hours in total'}.`,
     superpower: (r) => `Leverage: your longest single hand-off ran ${Math.round(r.deep.work.longestTurn?.min ?? 0)} minutes without you.`,
     blindSpot: () => `Long unattended runs need a way to check what came back.`,
   },

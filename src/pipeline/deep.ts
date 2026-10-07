@@ -3,6 +3,7 @@
 
 import type { CountRow, Deep, Example } from '../report-types.ts'
 import type { ClaudeStats } from '../sources/claudeStats.ts'
+import { IDLE_MS } from '../sources/common.ts'
 import { TEST_CMD, extOf } from '../sources/tools.ts'
 import type { HumanEvent, SourceName, ThreadRecord } from '../types.ts'
 import { perSource, SOURCE_KEYS } from '../sources/registry.ts'
@@ -160,6 +161,11 @@ export function buildDeep(classified: ClassifiedThread[], prompts: number, claud
   // replies, and some agents don't record how long a turn took
   let observedPrompts = 0
   let timedPrompts = 0
+  // prompts with no agent time on record are estimated from their pace: the time to the next
+  // prompt in the same conversation, at the share of it agents worked in timed conversations
+  let timedMs = 0
+  let timedPace = 0
+  let untimedPace = 0
   // ── intents
   const intents = new Map<string, number>()
   const intentExamples = new Map<string, string[]>()
@@ -182,6 +188,13 @@ export function buildDeep(classified: ClassifiedThread[], prompts: number, claud
     const turns = t.events.filter((e) => e.k === 'a')
     if (turns.length && !t.recovered) observedPrompts += humans.length
     if (turns.some((e) => e.ms)) timedPrompts += humans.length
+    let pace = 0
+    if (!t.approxTimes) for (let i = 1; i < humans.length; i++) pace += Math.min(Math.max(0, humans[i].ev.t - humans[i - 1].ev.t), IDLE_MS)
+    const ms = turns.reduce((a, e) => a + (e.ms || 0), 0)
+    if (ms) {
+      timedMs += ms
+      timedPace += pace
+    } else untimedPace += pace
     if (turns.length) {
       agentThreads++
       if (turns.some((e) => e.cmds?.some((c) => TEST_CMD.test(c)))) tested++
@@ -339,6 +352,7 @@ export function buildDeep(classified: ClassifiedThread[], prompts: number, claud
   }
 
   const agentMs = Object.values(agentMsBySource).reduce((a, b) => a + b, 0)
+  const untimedMs = timedPace ? Math.min(1, timedMs / timedPace) * untimedPace : 0
   const totalEffort = [...effort.values()].reduce((a, b) => a + b, 0)
   const highEffort = ['xhigh', 'max', 'ultra'].reduce((s, k) => s + (effort.get(k) || 0), 0)
   const weeklyPeaks = [...weekly.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([week, used]) => ({ week, used }))
@@ -352,6 +366,10 @@ export function buildDeep(classified: ClassifiedThread[], prompts: number, claud
     work: {
       agentHours: agentMs / 3.6e6,
       agentHoursBySource: Object.fromEntries(SOURCE_KEYS.map((s) => [s, agentMsBySource[s] / 3.6e6])) as Record<SourceName, number>,
+      agentHoursFloor: timedPrompts < prompts * 0.95,
+      agentHoursEst: (agentMs + untimedMs) / 3.6e6,
+      // filled in from the usage ledger
+      subagentHours: 0,
       timedTurns: turnMs.length,
       medianTurnMin: median(turnMs) / 60000,
       longestTurn: longest

@@ -79,7 +79,7 @@ export const FIELD_DOCS: Record<string, string> = {
   intents: 'what opening prompts ask for, from a fixed list (fix, build, explain…)',
   archetype: 'your card in the lore deck',
   type_code: 'your four-letter code',
-  agent_hours: 'hours agents worked for you',
+  agent_hours: 'hours agents worked for you, as timed in your history',
   lines_added: 'lines agents wrote',
   high_effort_share: 'the share of agent turns at the highest effort setting',
   swear_per_100_by_tool: 'swears per 100 prompts, per agent',

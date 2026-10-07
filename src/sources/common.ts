@@ -24,6 +24,9 @@ export function stripInjected(text: string): string {
   return s.trim()
 }
 
+/** The most agent time a gap between two events can hold; the rest of a longer gap is idle. */
+export const IDLE_MS = 30 * 60_000
+
 /**
  * Collects a thread's visible conversation. Agent output between two human messages
  * becomes one agent turn; reasoning never enters.
@@ -40,6 +43,15 @@ export class ThreadBuilder {
   linesRemoved = 0
   /** Test runs and their outcomes; red→green is a failure the agent later turned into a pass. */
   tests = { runs: 0, fails: 0, redGreen: false }
+  /** False when the source's timestamps aren't real; then no time is read from them. */
+  clock = true
+  // agent time read from timestamps, for threads whose harness recorded no durations:
+  // from the prompt through each agent event, each gap counting for at most IDLE_MS
+  private clockAt = 0
+  private clockMs = 0
+  private clocked: [AgentEvent, number][] = []
+  /** Every event time seen, to find idle stretches inside a recorded duration. */
+  private times: number[] = []
   private pendingInterrupt = false
   private agent: AgentEvent | null = null
   private last: AgentEvent | null = null
@@ -52,6 +64,8 @@ export class ThreadBuilder {
 
   human(e: Omit<HumanEvent, 'k' | 'afterInterrupt'>) {
     this.flushAgent()
+    this.clockAt = e.t
+    if (e.t) this.times.push(e.t)
     this.last = null
     const ev: HumanEvent = { k: 'h', ...e }
     if (this.pendingInterrupt) ev.afterInterrupt = true
@@ -61,12 +75,14 @@ export class ThreadBuilder {
 
   agentText(t: number, id: string, ln: number, text: string, model?: string) {
     const a = this.ensureAgent(t, id, ln, model)
+    this.tick(t)
     if (text.trim()) this.agentTexts.push(text.trim())
     a.t = Math.max(a.t, t)
   }
 
   agentTool(t: number, id: string, ln: number, name: string, model?: string, effect?: ToolEffect) {
     const a = this.ensureAgent(t, id, ln, model)
+    this.tick(t)
     a.tools++
     this.toolCalls++
     if (name && a.toolNames.length < 40) a.toolNames.push(name)
@@ -81,12 +97,51 @@ export class ThreadBuilder {
     if (effect?.cmds.length) a.cmds = [...(a.cmds || []), ...effect.cmds].slice(0, 20)
   }
 
-  /** Harness-recorded working time; it arrives after the turn's last message. */
-  agentDuration(ms: number) {
+  /** The agent was still working at `t` (a harness event outside the visible messages). */
+  tick(t: number) {
+    if (t) this.times.push(t)
+    if (!t || !this.clockAt || t <= this.clockAt) return
+    this.clockMs += Math.min(t - this.clockAt, IDLE_MS)
+    this.clockAt = t
+  }
+
+  /** The turn ended (at `t`, when the harness says so): nothing after it is work until a turn starts. */
+  turnEnd(t = 0) {
+    this.tick(t)
+    this.clockAt = 0
+  }
+
+  /** A turn the harness started without a typed prompt (a task resumed, a slash command). */
+  turnStart(t: number) {
+    if (!this.clockAt) this.clockAt = t
+  }
+
+  /**
+   * Harness-recorded working time; it arrives after the turn's last message, at `end` when known.
+   * A stretch inside it with no event for over IDLE_MS (a laptop asleep, a wait on subagents,
+   * whose own time is counted apart) is idle, and only its first IDLE_MS counts.
+   */
+  agentDuration(ms: number, end = 0) {
+    if (end > 0 && ms > 0) ms -= this.idleIn(end - ms, end)
     if (!(ms > 0)) return
     const a = this.agent || this.last
     if (a) a.ms = (a.ms || 0) + ms
     this.agentMs += ms
+  }
+
+  private idleIn(from: number, to: number): number {
+    let idle = 0
+    let prev = to
+    let seen = 0
+    for (let i = this.times.length - 1; i >= 0 && this.times[i] >= from; i--) {
+      const t = this.times[i]
+      if (t > prev) continue
+      idle += Math.max(0, prev - t - IDLE_MS)
+      prev = t
+      seen++
+    }
+    // with no event inside, there's nothing to tell idle from work
+    return seen ? idle + Math.max(0, prev - from - IDLE_MS) : 0
   }
 
   /** `input` is uncached input including cache writes; `write` is the cache-write part of it. */
@@ -149,6 +204,8 @@ export class ThreadBuilder {
   }
 
   flushAgent() {
+    if (this.agent && this.clockMs > 0) this.clocked.push([this.agent, this.clockMs])
+    this.clockMs = 0
     if (!this.agent) return
     this.agent.text = headTail(this.agentTexts.join('\n\n'))
     this.events.push(this.agent)
@@ -159,6 +216,15 @@ export class ThreadBuilder {
 
   finish(): ThreadEvent[] {
     this.flushAgent()
+    // A harness that recorded no turn durations (an older Codex, Claude Code before it wrote
+    // them, most other agents) still timestamped the work: read the time from there.
+    if (!this.agentMs && this.clock) {
+      for (const [a, ms] of this.clocked) {
+        a.ms = ms
+        a.clock = true
+        this.agentMs += ms
+      }
+    }
     return this.events
   }
 }

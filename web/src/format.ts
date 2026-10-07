@@ -12,6 +12,8 @@ export function big(x: number): string {
   return n(x)
 }
 export const money = (x: number) => `$${x >= 1000 ? n(x) : x.toFixed(x < 1 ? 3 : 2)}`
+/** An estimate, to two figures: ~1,600. */
+export const about = (x: number) => `~${n(x >= 1000 ? Math.round(x / 100) * 100 : Math.round(x / 10) * 10)}`
 
 export const fmtDate = (t: number | string, opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }) =>
   new Date(typeof t === 'string' ? `${t.slice(0, 10)}T12:00:00` : t).toLocaleDateString('en-US', opts)

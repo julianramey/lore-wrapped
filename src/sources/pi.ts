@@ -215,6 +215,11 @@ class PiSession {
       const raw = contentText(m.content)
       const text = this.flavor === 'openclaw' ? openclawText(raw) : stripInjected(raw)
       if (text && !text.startsWith('/')) this.b.human({ t, id: sha1(`${this.flavor}|${o.id}|${t}`), text, ln })
+      else {
+        // a heartbeat or cron prompt is the agent's own work, not time on yours; a slash command starts its own
+        this.b.turnEnd()
+        if (text) this.b.turnStart(t)
+      }
     } else if (m.role === 'assistant') {
       // OpenClaw mirrors what it delivered to a chat as an assistant message; no model ran
       if (m.model === 'delivery-mirror' || m.provider === 'openclaw' || m.provider === 'clawdbot') return

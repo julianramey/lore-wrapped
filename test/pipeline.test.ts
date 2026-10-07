@@ -97,6 +97,8 @@ test('Claude subagent files count their tokens, each reply once, and never becom
   )
   // Claude Code's own way: every record, repeats included
   assert.equal(Object.values(usage.raw).reduce((a: number, d: any) => a + d['claude-x'], 0), 1160 * 4 - 47)
+  // its working time, keyed by reply: the task came a minute before the first one
+  assert.deepEqual(usage.time, [['c|m1', 60_000]])
 })
 
 test('Codex adapter reads main threads, skips subagents from metadata, strips injected context, counts each call once', async () => {
@@ -149,6 +151,105 @@ test('Codex adapter reads main threads, skips subagents from metadata, strips in
   assert.equal(t.models['gpt-x'], 1)
   assert.equal(t.toolCalls, 1)
   assert.ok(!JSON.stringify(t).includes('HIDDEN'))
+})
+
+test('agent time: Codex task durations, interrupted ones too, idle stretches out; older Codex read from timestamps', async () => {
+  const meta = (id: string, version: string) => ({ timestamp: '2026-02-01T00:00:00Z', type: 'session_meta', payload: { id, cwd: '/Users/me/app', originator: 'codex_cli_rs', source: 'cli', cli_version: version } })
+  const user = (t: string, text: string) => ({ timestamp: t, type: 'response_item', payload: { type: 'message', id: `msg_${t}`, role: 'user', content: [{ type: 'input_text', text }] } })
+  const say = (t: string, text: string) => ({ timestamp: t, type: 'response_item', payload: { type: 'message', id: `msg_${t}`, role: 'assistant', content: [{ type: 'output_text', text }] } })
+  const call = (t: string) => ({ timestamp: t, type: 'response_item', payload: { type: 'function_call', name: 'shell', arguments: '{}', call_id: 'c1' } })
+  const out = (t: string) => ({ timestamp: t, type: 'response_item', payload: { type: 'function_call_output', call_id: 'c1', output: 'ok' } })
+  const ev = (t: string, payload: object) => ({ timestamp: t, type: 'event_msg', payload })
+  const min = (o: any) => o.thread.events.filter((e: any) => e.k === 'a').map((e: any) => [e.ms / 60_000, !!e.clock])
+
+  const recorded = (await parseCodexFile(
+    write('codex/timed.jsonl', [
+      meta('N1', '0.150.0'),
+      user('2026-09-01T10:00:00Z', 'migrate the database'),
+      ev('2026-09-01T10:00:00Z', { type: 'task_started', turn_id: 't1' }),
+      call('2026-09-01T10:10:00Z'),
+      out('2026-09-01T10:40:00Z'), // a 30-minute command is work
+      say('2026-09-01T13:10:00Z', 'Migrated.'), // then 2.5 hours with nothing: the laptop slept
+      ev('2026-09-01T13:10:00Z', { type: 'task_complete', turn_id: 't1', duration_ms: 190 * 60_000 }),
+      user('2026-09-01T13:20:00Z', 'and seed it'),
+      ev('2026-09-01T13:20:00Z', { type: 'task_started', turn_id: 't2' }),
+      call('2026-09-01T13:21:00Z'),
+      ev('2026-09-01T13:26:00Z', { type: 'turn_aborted', turn_id: 't2', reason: 'interrupted', duration_ms: 6 * 60_000 }),
+    ]),
+  )) as any
+  assert.deepEqual(min(recorded), [[190 - 120, false], [6, false]], 'only the first 30 minutes of the idle stretch count; a stopped task ran until you stopped it')
+  assert.equal(recorded.thread.interrupts, 1)
+  assert.deepEqual(recorded.usage.time.map((x: any[]) => x[0]), ['t1', 't2'], 'turn ids, so a subagent replaying them is not counted twice')
+
+  // before 0.119 Codex wrote no duration, and closed a task only when the next prompt came
+  const older = (await parseCodexFile(
+    write('codex/old.jsonl', [
+      meta('O1', '0.45.0'),
+      user('2026-02-01T10:00:00Z', 'fix the build'),
+      ev('2026-02-01T10:00:00Z', { type: 'task_started' }),
+      call('2026-02-01T10:01:00Z'),
+      out('2026-02-01T10:04:00Z'),
+      say('2026-02-01T10:05:00Z', 'Fixed.'),
+      user('2026-02-01T11:30:00Z', 'now the tests'),
+      ev('2026-02-01T11:30:00Z', { type: 'task_complete' }),
+      ev('2026-02-01T11:30:00Z', { type: 'task_started' }),
+      say('2026-02-01T11:32:00Z', 'Done.'),
+    ]),
+  )) as any
+  assert.deepEqual(min(older), [[5, true], [2, true]], 'from the prompt to the last agent event, not to the next prompt')
+})
+
+test('agent time: Claude turn durations lose idle stretches; without any, timestamps, and only for your prompts', async () => {
+  const base = { cwd: '/Users/me/proj', entrypoint: 'cli', isSidechain: false }
+  const u = (sid: string, uuid: string, t: string, content: string, extra = {}) => ({ ...base, sessionId: sid, type: 'user', uuid, timestamp: t, message: { role: 'user', content }, ...extra })
+  const a = (sid: string, uuid: string, t: string, id: string, block: object) => ({ ...base, sessionId: sid, type: 'assistant', uuid, timestamp: t, message: { id, model: 'claude-x', content: [block] } })
+  const text = (s: string) => ({ type: 'text', text: s })
+  const min = (o: any) => o.thread.events.filter((e: any) => e.k === 'a').map((e: any) => [e.ms / 60_000, !!e.clock])
+  const timed = (await parseClaudeFile(
+    write('claude/time/T1.jsonl', [
+      u('T1', 'u1', '2026-09-01T10:00:00Z', 'refactor the parser'),
+      a('T1', 'a1', '2026-09-01T10:05:00Z', 'm1', text('Two subagents are on it.')),
+      a('T1', 'a2', '2026-09-01T11:35:00Z', 'm2', text('Done.')), // 90 minutes waiting on them; their time counts apart
+      { ...base, sessionId: 'T1', type: 'system', subtype: 'turn_duration', durationMs: 95.5 * 60_000, timestamp: '2026-09-01T11:35:30Z' },
+    ]),
+  )) as any
+  assert.deepEqual(min(timed), [[35.5, false]])
+  const untimed = (await parseClaudeFile(
+    write('claude/time/T2.jsonl', [
+      u('T2', 'v1', '2026-09-02T10:00:00Z', 'add a --json flag'),
+      a('T2', 'b1', '2026-09-02T10:02:00Z', 'n1', { type: 'tool_use', id: 'x', name: 'Edit', input: {} }),
+      a('T2', 'b2', '2026-09-02T10:03:00Z', 'n2', text('Added.')),
+      u('T2', 'v2', '2026-09-02T10:20:00Z', 'a message from another agent', { origin: { kind: 'peer' } }),
+      a('T2', 'b3', '2026-09-02T10:50:00Z', 'n3', text('Answered the other agent.')),
+      u('T2', 'v3', '2026-09-02T11:00:00Z', 'thanks'),
+      a('T2', 'b4', '2026-09-02T11:01:00Z', 'n4', text('Anytime.')),
+    ]),
+  )) as any
+  assert.deepEqual(min(untimed), [[3, true], [1, true]], 'work for another agent is not time on your prompt')
+})
+
+test('agent hours are a floor when prompts have no record of the agent, with an estimate from their pace', async () => {
+  const { buildReport } = await import('../src/pipeline/facts.ts')
+  const t0 = Date.UTC(2026, 3, 1, 9)
+  const thread = (i: number, recovered: boolean): ThreadRecord => ({
+    id: `p${i}`, source: 'claude-code', surface: 'cli', file: '/x', archived: false, cwd: '/p/alpha', project: 'alpha',
+    startedAt: t0 + i * 86_400_000, endedAt: t0 + i * 86_400_000 + 3_600_000, models: {}, toolCalls: 0, interrupts: 0, slashCommands: 0,
+    tokens: {}, agentMs: 0, linesAdded: 0, linesRemoved: 0, efforts: {}, planModeTurns: 0, warnings: [], recovered: recovered || undefined,
+    // three prompts ten minutes apart; timed ones bought 5 minutes of agent work each
+    events: [0, 1, 2].flatMap((k) => {
+      const t = t0 + i * 86_400_000 + k * 600_000
+      const h = { k: 'h' as const, t, id: `h${i}-${k}`, text: 'keep going on the importer', ln: 1 }
+      return recovered ? [h] : [h, { k: 'a' as const, t: t + 300_000, id: `a${i}-${k}`, text: 'ok', tools: 1, toolNames: [], ln: 2, ms: 300_000 }]
+    }),
+  })
+  const threads = [thread(0, false), thread(1, false), thread(2, true), thread(3, true)]
+  const scan = { threads, coverage: [], scannedAt: 0, scanMs: 1, filesParsed: 4, filesFromCache: 0, bytesParsed: 0, claudeStats: null, claudePlan: null, usage: { ...ledgerFromThreads(threads), subagentMs: { ...perSource(() => 0), 'claude-code': 7_200_000 } } }
+  const w = buildReport(scan as any).report.deep.work
+  assert.equal(w.agentHours, 0.5)
+  assert.equal(w.agentHoursFloor, true)
+  // timed: 30 minutes of work over 40 minutes between prompts; the rebuilt ones spent 40 too
+  assert.equal(w.agentHoursEst, 0.5 + 0.75 * (40 / 60))
+  assert.equal(w.subagentHours, 2)
 })
 
 test('classification is rule-based and explains itself', () => {
@@ -645,6 +746,7 @@ test('spend counts each reply once and scales Claude’s own stats down for days
     claudeRaw: { '2026-09-10': { 'claude-x': 2e9 } },
     claudeOnDiskFrom: Date.parse('2026-09-09T12:00:00'),
     subagentTokens: perSource(() => 0),
+    subagentMs: perSource(() => 0),
   }
   const stats = {
     since: '2026-01-05T00:00:00Z', totalSessions: 1, totalMessages: 1, daily: {}, lastComputed: '2026-09-10', retentionDays: 30, retentionConfigured: false,

@@ -4,7 +4,7 @@ import type { FileOutcome, FileUsage, Surface, ThreadRecord, UsageRow } from '..
 import { parseJson, scanLines } from '../util/lines.ts'
 import { dayKey } from '../util/text.ts'
 import { projectFromCwd } from '../util/project.ts'
-import { ThreadBuilder, mergeUsage, stripInjected } from './common.ts'
+import { IDLE_MS, ThreadBuilder, mergeUsage, stripInjected } from './common.ts'
 import type { Root } from './roots.ts'
 import { TEST_CMD, TEST_FAILED, claudeTool } from './tools.ts'
 
@@ -112,18 +112,31 @@ function usageCollector() {
   }
 }
 
-/** Subagent transcripts: never part of the conversation, but their tokens are real. */
+/**
+ * Subagent transcripts: never part of the conversation, but their tokens and time are real.
+ * Its working time runs from the task through each reply (of a longer gap, only IDLE_MS counts),
+ * keyed by reply so a copy of the transcript elsewhere counts once.
+ */
 async function parseClaudeUsageOnly(df: DiscoveredFile): Promise<FileOutcome> {
   const usage = usageCollector()
+  const time = new Map<string, number>()
+  let prev = 0
   await scanLines(
     df.file,
-    (head) => head.includes('"role":"assistant"') || head.includes('"type":"assistant"'),
+    // the first timed record is the task; after it, only replies
+    (head) => !prev || head.includes('"role":"assistant"') || head.includes('"type":"assistant"'),
     (line) => {
       const o = parseJson(line)
-      if (o?.type === 'assistant') usage.add(o)
+      const t = Date.parse(o?.timestamp) || 0
+      if (o?.type === 'assistant') {
+        usage.add(o)
+        const id = o.message?.id
+        if (id && t > prev && prev) time.set(`c|${id}`, (time.get(`c|${id}`) || 0) + Math.min(t - prev, IDLE_MS))
+      }
+      if (t > prev) prev = t
     },
   )
-  return { kind: 'subagent', usage: usage.result() }
+  return { kind: 'subagent', usage: { ...usage.result(), time: [...time] } }
 }
 
 /** What Claude Code records when you say no to a tool call. */
@@ -189,7 +202,7 @@ export async function parseClaudeFile(df: DiscoveredFile): Promise<FileOutcome> 
         return
       }
       if (o.type === 'system') {
-        if (o.subtype === 'turn_duration' && !o.isSidechain) b.agentDuration(Number(o.durationMs) || 0)
+        if (o.subtype === 'turn_duration' && !o.isSidechain) b.agentDuration(Number(o.durationMs) || 0, Date.parse(o.timestamp) || 0)
         return
       }
       if (o.type !== 'user' && o.type !== 'assistant') return
@@ -248,10 +261,12 @@ export async function parseClaudeFile(df: DiscoveredFile): Promise<FileOutcome> 
       if (origin) {
         if (origin !== 'human') {
           if (origin === 'sdk') sdkPrompts++
+          // what the agent does for another program or agent isn't time on your prompt
+          b.turnEnd()
           return
         }
       } else {
-        if (o.promptSource === 'system') return
+        if (o.promptSource === 'system') return b.turnEnd()
         if (o.promptSource === 'sdk') sdkPrompts++
       }
 
@@ -272,6 +287,8 @@ export async function parseClaudeFile(df: DiscoveredFile): Promise<FileOutcome> 
       }
       if (text.includes('<command-name>')) {
         slash++
+        b.turnEnd()
+        b.turnStart(t)
         return
       }
       const clean = stripInjected(text)

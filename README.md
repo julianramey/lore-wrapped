@@ -95,7 +95,7 @@ Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code'
 | `intents` | what opening prompts ask for, from a fixed list (fix, build, explain…) |
 | `archetype` | your card in the lore deck |
 | `type_code` | your four-letter code |
-| `agent_hours` | hours agents worked for you |
+| `agent_hours` | hours agents worked for you, as timed in your history |
 | `lines_added` | lines agents wrote |
 | `high_effort_share` | the share of agent turns at the highest effort setting |
 | `swear_per_100_by_tool` | swears per 100 prompts, per agent |
@@ -159,12 +159,12 @@ Audit the npm package lore-wrapped before I run it. Assume it might be lying to 
 
 | Agent | Location | Notes |
 | --- | --- | --- |
-| Claude Code | `~/.claude/projects/*/*.jsonl` | SDK-driven sessions excluded; `subagents/` read for token counts only |
-| Claude Code prompt history | `~/.claude/history.jsonl` | Never cleaned up, so sessions Claude deleted after 30 days come back as prompts-only threads |
+| Claude Code | `~/.claude/projects/*/*.jsonl` | SDK-driven sessions excluded; `subagents/` read for token counts and time only |
+| Claude Code prompt history | `~/.claude/history.jsonl` | Never cleaned up, so sessions Claude deleted after 30 days come back as prompts-only threads, with no agent time on record (agent hours show as a floor, plus an estimate) |
 | Claude Code stats | `~/.claude/stats-cache.json` | Tokens by model and day, for days whose transcripts are gone |
 | Claude plan | `~/.claude.json` | Only the plan type and rate-limit tier, for the plan cost, and `firstStartTime`, for when you started |
 | Claude Desktop Code | `~/Library/Application Support/Claude/claude-code-sessions` | Joined to the CLI transcript by `cliSessionId`; Windows and Linux app data too |
-| Codex (CLI, IDE, desktop) | `~/.codex/sessions`, `archived_sessions` | Subagents read for token counts only; `exec`/SDK runs excluded |
+| Codex (CLI, IDE, desktop) | `~/.codex/sessions`, `archived_sessions` | Subagents read for token counts and task times only; `exec`/SDK runs excluded |
 | Gemini CLI | `~/.gemini/tmp/*/chats/session-*.json[l]`, `logs.json` | Messages folded by id; deleted chats come back as prompts from `logs.json` |
 | OpenCode | `~/.local/share/opencode/opencode*.db`, `storage/` | Read-only SQLite, plus the pre-1.2 JSON tree; child sessions for token counts only |
 | Kilo CLI | `~/.local/share/kilo/kilo*.db` | OpenCode's format |

@@ -7,7 +7,7 @@ import type { Report } from '../../src/report-types.ts'
 import { icon } from './icons/render.ts'
 import { OBJECTS } from './icons/scenes.ts'
 import { drawMark } from './mark.ts'
-import { period } from './format.ts'
+import { about, period } from './format.ts'
 import { vsCode } from '../../src/pipeline/versus.ts'
 import { PALETTES, type Palette } from './palettes.ts'
 
@@ -54,6 +54,8 @@ export function availableCards(r: Report): CardKind[] {
 }
 
 const big = (x: number) => (x >= 1e9 ? `${(x / 1e9).toFixed(1)}B` : x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e4 ? `${Math.round(x / 1e3)}k` : Math.round(x).toLocaleString('en-US'))
+/** Agent hours, with a + when some prompts have no agent time on record. */
+const hours = (r: Report) => `${big(r.deep.work.agentHours)}${r.deep.work.agentHoursFloor ? '+' : ''}`
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
 export async function fontsReady() {
@@ -86,7 +88,7 @@ export function signature(r: Report): { value: string; label: string } {
       return { value: big(r.deepest[0]?.prompts ?? 0), label: 'prompts in one thread' }
     default:
       // without transcripts there are no turn timings; prompts are always on record
-      return d.work.timedTurns ? { value: big(d.work.agentHours), label: 'hours of agent work' } : { value: big(r.totals.prompts), label: 'prompts on record' }
+      return d.work.timedTurns ? { value: hours(r), label: d.work.agentHoursFloor ? 'hours of agent work, timed' : 'hours of agent work' } : { value: big(r.totals.prompts), label: 'prompts on record' }
   }
 }
 
@@ -558,7 +560,7 @@ function numbersCard(g: CanvasRenderingContext2D, r: Report) {
   const cells = [
     { value: big(r.totals.prompts), label: 'prompts sent' },
     { value: big(r.totals.activeDays), label: 'days at it' },
-    { value: big(d.work.agentHours), label: 'hours agents worked' },
+    { value: hours(r), label: d.work.agentHoursFloor ? 'hours agents worked, timed' : 'hours agents worked' },
     { value: `+${big(d.work.linesAdded)}`, label: 'lines agents wrote' },
     { value: big(r.spend.tokens || d.tokens.input + d.tokens.cached + d.tokens.output), label: 'tokens' },
     { value: `${r.streak.days}d`, label: 'longest streak' },
@@ -584,19 +586,21 @@ function overtimeCard(g: CanvasRenderingContext2D, r: Report) {
   const p = { bg: '#131312', ink: '#f2f2ee', accent: '#f5b301', muted: '#363633' }
   frame(g, r, p)
   const w = r.deep.work
-  let y = statement(g, p, [['My agents worked'], [[`${big(w.agentHours)} hours`, 'accent']], ['for me.']], 290, 104)
+  let y = statement(g, p, [['My agents worked'], [[`${hours(r)} hours`, 'accent']], ['for me.']], 290, 104)
   y += 30
+  // a floor says so: what the untimed prompts would add, and the subagents' hours on top
+  const est = w.agentHoursFloor && w.agentHoursEst >= w.agentHours * 1.05
   stats(
     g,
     p,
     [
       { value: w.longestTurn ? `${(w.longestTurn.min / 60).toFixed(1)}h` : '—', label: 'longest single run', accent: true },
-      { value: `${w.agentMinutesPerPrompt.toFixed(1)}m`, label: 'agent time per prompt' },
-      { value: big(w.commands.total), label: 'commands they ran' },
+      est ? { value: `${about(w.agentHoursEst)}h`, label: 'est. with untimed prompts' } : { value: `${w.agentMinutesPerPrompt.toFixed(1)}m`, label: 'agent time per prompt' },
+      w.subagentHours >= 1 ? { value: `+${big(w.subagentHours)}h`, label: 'more in subagents' } : { value: big(w.commands.total), label: 'commands they ran' },
     ],
     y + 20,
   )
-  label(g, p, 'who did the hours', y + 220)
+  label(g, p, w.agentHoursFloor ? `who did the hours · timed on ${Math.round((w.perPromptBasis.timed / w.perPromptBasis.prompts) * 100)}% of prompts` : 'who did the hours', y + 220)
   bars(
     g,
     p,

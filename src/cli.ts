@@ -106,8 +106,16 @@ async function main() {
 
   const t = report.totals
   const d = report.deep
+  const w = d.work
   const sp = report.spend
   const big = (x: number) => (x >= 1e9 ? `${(x / 1e9).toFixed(1)}B` : x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e4 ? `${Math.round(x / 1e3)}k` : n(x))
+  // agent hours are a floor when transcripts are gone: say how much was timed, and what the rest adds
+  const about = (x: number) => n(x >= 1000 ? Math.round(x / 100) * 100 : Math.round(x / 10) * 10)
+  const timing = [
+    w.agentHoursFloor && `timed on ${Math.round((w.perPromptBasis.timed / w.perPromptBasis.prompts) * 100)}% of prompts`,
+    w.agentHoursFloor && w.agentHoursEst >= w.agentHours * 1.05 && `~${about(w.agentHoursEst)} est. in all`,
+    w.subagentHours >= 1 && `+${n(w.subagentHours)} in subagents`,
+  ].filter(Boolean)
   const gb = result.coverage.reduce((s, c) => s + c.bytes, 0) / 1e9
   await live?.stop()
   if (t.prompts === 0) {
@@ -122,8 +130,8 @@ async function main() {
         '',
         bold('Your card is ready.'),
         `${big(t.prompts)} prompts ${dim('·')} ${n(t.activeDays)} days ${dim('·')} ${n(t.threads)} conversations ${dim('on record')}`,
-        `${n(d.work.agentHours)} agent hour${Math.round(d.work.agentHours) === 1 ? '' : 's'} ${dim('·')} ${sp.totalUsd >= 1 ? `$${big(sp.totalUsd)} API-equivalent ${dim('·')} ` : ''}${big(sp.tokens || d.tokens.input + d.tokens.cached + d.tokens.output)} tokens`,
-        '',
+        `${n(w.agentHours)}${w.agentHoursFloor ? '+' : ''} agent hour${Math.round(w.agentHours) === 1 && !w.agentHoursFloor ? '' : 's'} ${dim('·')} ${sp.totalUsd >= 1 ? `$${big(sp.totalUsd)} API-equivalent ${dim('·')} ` : ''}${big(sp.tokens || d.tokens.input + d.tokens.cached + d.tokens.output)} tokens`,
+        dim(timing.join(' · ')),
         dim(`${gb.toFixed(1)} GB of history in ${(result.scanMs / 1000).toFixed(1)}s · ${n(result.filesParsed)} parsed, ${n(result.filesFromCache)} cached · 0 model calls`),
         '',
       ]) +

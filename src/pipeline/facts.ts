@@ -33,7 +33,11 @@ export const DEFINITIONS: Record<string, string> = {
   toolCalls: 'Actions agents took on your behalf (shell commands, edits, searches) in main threads.',
   phrase: 'Three-to-five-word phrases you used in at least four different threads.',
   night: 'Prompts sent between 10pm and 4am local time.',
-  agentHours: "Agent working time as each harness recorded it (Claude Code's turn durations, Codex's task durations). Not your time.",
+  agentHours:
+    "Agent working time as each harness recorded it (Claude Code's turn durations, Codex's task durations, interrupted tasks included). Where a harness recorded none (Codex before 0.119, most other agents), it runs from your prompt through the agent's last event. Either way, a stretch with no agent activity counts for at most 30 minutes (a laptop asleep, a wait on subagents). Prompts whose transcripts are gone have no agent time on record, so with many of them the total is a floor. Not your time.",
+  agentHoursEst:
+    'Agent hours plus an estimate for the prompts with none on record: the time from each to your next prompt in the same conversation (at most 30 minutes), at the share of that time agents worked in your timed conversations. A rough guide, not a measurement.',
+  subagentHours: 'Time subagents worked (Claude Code subagents, Codex spawned agents), from their own transcripts, each turn once. They work alongside the main agent, so these hours are on top of agent hours.',
   lines: 'Lines added and removed by agent edits and patches. Lockfiles and build output are left out. Claude edits count old and new text, so a one-line change counts as +1/−1.',
   tokens: "Tokens each harness logged: fresh input, cached input (re-read context, much cheaper) and output.",
   claudeCost: "API-equivalent cost Claude Code computed for its own sessions at list prices. On a subscription you didn't pay this; it's what the same usage would cost through the API.",
@@ -346,6 +350,7 @@ export function buildReport(scan: ScanResult): { report: Report; classified: Cla
   }
   report.moments = pickMoments(report, classified)
   report.deep = buildDeep(classified, prompts, scan.claudeStats)
+  report.deep.work.subagentHours = Object.values(scan.usage.subagentMs || {}).reduce((a, b) => a + b, 0) / 3.6e6
   report.spend = buildSpend(threads, scan.claudeStats, plansFor(report, scan.claudePlan), scan.usage)
   // one count of tokens everywhere: the ledger's, each API reply once
   const byModel = report.spend.models.map((m) => ({ model: m.model, input: m.input, cached: m.cached, output: m.output, total: m.tokens, source: m.source }))

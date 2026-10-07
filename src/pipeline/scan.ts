@@ -186,6 +186,10 @@ export async function scan(opts: { workerUrl?: URL | null; onProgress?: (p: Scan
     for (let i = 0; i < 32 && parentOf.get(cur); i++) cur = parentOf.get(cur)!
     return cur
   }
+  // subagent time: each turn once, and never a turn a main thread already has (a replayed parent)
+  const seenTurns = new Set<string>()
+  for (const { o } of outcomes.values()) if (o.kind !== 'subagent' && o.kind !== 'error') for (const [k] of o.usage?.time || []) seenTurns.add(k)
+  const subagentMs = perSource(() => 0)
   for (const { job, o } of outcomes.values()) {
     if (o.kind !== 'error' && o.usage) {
       const subRows = new Set(o.usage.subRows)
@@ -199,6 +203,13 @@ export async function scan(opts: { workerUrl?: URL | null; onProgress?: (p: Scan
       for (const [day, byModel] of Object.entries(o.usage.raw || {})) {
         const d = (claudeRaw[day] ||= {})
         for (const [m, v] of Object.entries(byModel)) d[m] = (d[m] || 0) + v
+      }
+    }
+    if (o.kind === 'subagent') {
+      for (const [k, ms] of o.usage?.time || []) {
+        if (seenTurns.has(k)) continue
+        seenTurns.add(k)
+        subagentMs[job.source] += ms
       }
     }
     const c = cov[job.source]
@@ -314,11 +325,14 @@ export async function scan(opts: { workerUrl?: URL | null; onProgress?: (p: Scan
     claudeStats: readClaudeStats(roots.claude.map((r) => r.dir)),
     claudePlan: readClaudePlan(roots.claude.map((r) => r.dir)),
     claudeFirstUse: readClaudeFirstUse(roots.claude.map((r) => r.dir)),
-    usage: ledgerOf(
-      replies,
-      claudeRaw,
-      all.filter((j) => j.source === 'claude-code').map((j) => j.df),
-    ),
+    usage: {
+      ...ledgerOf(
+        replies,
+        claudeRaw,
+        all.filter((j) => j.source === 'claude-code').map((j) => j.df),
+      ),
+      subagentMs,
+    },
   }
 }
 
@@ -344,6 +358,7 @@ function ledgerOf(replies: Map<string, { source: SourceName; row: UsageRow; sub?
     claudeRaw,
     claudeOnDiskFrom: claudeFiles.length ? claudeFiles.reduce((a, f) => Math.min(a, f.mtimeMs), Infinity) : null,
     subagentTokens,
+    subagentMs: perSource(() => 0),
   }
 }
 

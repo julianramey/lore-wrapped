@@ -6,7 +6,7 @@ export { VERSION } from './version.ts'
 import { VERSION } from './version.ts'
 
 /** Bump when adapter output changes so cached threads are re-parsed. */
-export const ADAPTER_VERSION = 15
+export const ADAPTER_VERSION = 16
 
 export const LORE_HOME = process.env.LORE_HOME || path.join(os.homedir(), '.lore')
 export const CACHE_DIR = path.join(LORE_HOME, 'cache', `threads-v${ADAPTER_VERSION}`)

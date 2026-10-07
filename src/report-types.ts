@@ -189,8 +189,15 @@ export interface Deep {
     mcpKinds: string[]
   }
   work: {
+    /** Agent time on record: each harness's turn timings, or its timestamps where it recorded none. */
     agentHours: number
     agentHoursBySource: Record<SourceName, number>
+    /** Over 5% of prompts have no agent time on record (their transcripts are gone), so agentHours is a floor. */
+    agentHoursFloor: boolean
+    /** agentHours plus an estimate for the prompts with none on record, from their pace. */
+    agentHoursEst: number
+    /** Subagents' working time, each turn once; alongside the main agents, so not in agentHours. */
+    subagentHours: number
     timedTurns: number
     medianTurnMin: number
     longestTurn: { min: number; project: string; title: string; ref: EvidenceRef } | null

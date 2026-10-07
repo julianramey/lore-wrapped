@@ -6,7 +6,7 @@ import { SOURCE_KEYS } from '../../src/sources/registry.ts'
 import type { Budget, Narrative, Provider, ProviderId, Receipt } from './api.ts'
 import { HBars, HeatLegend, LimitWeeks, RhythmGrid, TokenBars } from './charts.tsx'
 import { Quote, useEvidence } from './evidence.tsx'
-import { big, dur, fmtDate, fmtMonth, hourLabel, money, n, oneIn, pct, plural, secs, SOURCE_LABEL, sourceVar } from './format.ts'
+import { about, big, dur, fmtDate, fmtMonth, hourLabel, money, n, oneIn, pct, plural, secs, SOURCE_LABEL, sourceVar } from './format.ts'
 import { availableCards, CARD_LABELS, cardImage, type CardKind } from './cards.ts'
 import { BillBand, BranchesBand, EndBand, ModelsBand, PaidBand, RankBand, RecordsBand, Reveal, Slider, TwinBand, WordsBand, YearBand } from './showpieces.tsx'
 
@@ -503,7 +503,7 @@ function Work({ r }: { r: Report }) {
   return (
     <Sec id="work" n="13" title="what the agents did">
       <h2>
-        {plural(Math.round(w.agentHours), 'hour')} of agent work. {big(w.commands.total)} commands. {big(w.linesAdded)} lines.
+        {w.agentHoursFloor ? `${n(w.agentHours)}+ hours` : plural(Math.round(w.agentHours), 'hour')} of agent work. {big(w.commands.total)} commands. {big(w.linesAdded)} lines.
       </h2>
       <p class="lead">
         Each prompt bought <strong>{w.agentMinutesPerPrompt.toFixed(1)} minutes</strong> of agent time and <strong>{w.actionsPerPrompt.toFixed(1)} actions</strong>. A typical turn ran {w.medianTurnMin.toFixed(1)} minutes;
@@ -517,6 +517,14 @@ function Work({ r }: { r: Report }) {
             .
           </>
         ) : null}
+        {w.agentHoursFloor ? (
+          <span class="muted">
+            {' '}
+            The hours are timed on {n(w.perPromptBasis.timed)} of {n(w.perPromptBasis.prompts)} prompts; the rest have no record of the agent’s work, mostly because their transcripts are gone.
+            {w.agentHoursEst >= w.agentHours * 1.05 ? ` At the pace you sent them, they’d add ${about(w.agentHoursEst - w.agentHours)} hours, ${about(w.agentHoursEst)} in all.` : ''}
+          </span>
+        ) : null}
+        {w.subagentHours >= 1 ? <span class="muted"> Subagents worked another {plural(Math.round(w.subagentHours), 'hour')} alongside.</span> : null}
         {w.perPromptBasis.observed < w.perPromptBasis.prompts * 0.95 ? (
           <span class="muted">
             {' '}
@@ -526,7 +534,7 @@ function Work({ r }: { r: Report }) {
       </p>
       <div class="grid3">
         <div class="panel">
-          <Stat v={n(w.agentHours)} k="agent hours" />
+          <Stat v={`${n(w.agentHours)}${w.agentHoursFloor ? '+' : ''}`} k={w.agentHoursFloor ? 'agent hours, timed' : 'agent hours'} />
           <div style={{ height: '14px' }} />
           <HBars
             rows={SOURCE_KEYS.filter((s) => w.agentHoursBySource[s] > 0).map((s) => ({ label: SOURCE_LABEL[s], value: w.agentHoursBySource[s], color: sourceVar(s), display: `${pct(w.agentHoursBySource[s] / totalHours)}` }))}

@@ -36,8 +36,10 @@ export interface AgentEvent {
   ln: number
   /** Last source line of this turn, so episodes can re-read its diffs on demand. */
   lnEnd?: number
-  /** Agent working time for the turn, as the harness recorded it. */
+  /** Agent working time for the turn, as the harness recorded it, or read from timestamps when `clock`. */
   ms?: number
+  /** The harness recorded no durations: `ms` runs from the prompt through the turn's events, idle gaps left out. */
+  clock?: true
   edits?: EditStat[]
   /** Shell commands the agent ran (clipped). */
   cmds?: string[]
@@ -102,6 +104,12 @@ export interface FileUsage {
   /** Claude only: date → model → every usage record summed, repeats included, the way Claude Code's own counter adds them. */
   raw?: Record<string, Record<string, number>>
   /**
+   * Agent working time in keyed slices [key, ms] (a Codex task by its turn id, a Claude reply by
+   * its message id), so a subagent replaying its parent's turns counts each once. Main threads
+   * report their keys only so subagent copies of them aren't counted as subagent work.
+   */
+  time?: [string, number][]
+  /**
    * Codex only: this session and the one it came from (a fork's original, a subagent's
    * parent). Usage keyed by cumulative totals (`x|…`) only matches copies within one lineage.
    */
@@ -121,6 +129,8 @@ export interface UsageLedger {
   claudeOnDiskFrom: number | null
   /** Tokens spent by subagents, per source, each reply once. */
   subagentTokens: Record<SourceName, number>
+  /** Subagent working time, per source, each turn once (copies of a parent's turns excluded). */
+  subagentMs: Record<SourceName, number>
 }
 
 /** What an adapter reports about a file it looked at, whether or not it produced a thread. */

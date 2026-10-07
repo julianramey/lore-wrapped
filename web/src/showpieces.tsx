@@ -16,7 +16,7 @@ import { PALETTES } from './palettes.ts'
 import { SOURCES, sourceLabel, type SourceName } from '../../src/sources/registry.ts'
 import { prettyModel } from '../../src/pipeline/modelName.ts'
 import { Quote, useEvidence } from './evidence.tsx'
-import { big, fmtDate, fmtMonth, money, n, pct, plural, since, SOURCE_LABEL, sourceVar, WEEKDAYS } from './format.ts'
+import { about, big, fmtDate, fmtMonth, money, n, pct, plural, since, SOURCE_LABEL, sourceVar, WEEKDAYS } from './format.ts'
 
 /** How close a twin is, in words: the similarity behind it is a reading of reputations, not a calibrated score. */
 const fit = (match: number) => (match >= 80 ? 'close match' : match >= 55 ? 'good match' : 'loose match')
@@ -492,7 +492,16 @@ export function RecordsBand({ r }: { r: Report }) {
     { v: `${r.streak.days} days`, k: 'longest streak', d: `${fmtDate(r.streak.from, { month: 'short', day: 'numeric', year: 'numeric' })} – ${fmtDate(r.streak.to, { month: 'short', day: 'numeric' })}, not a day off` },
     ...(rec.longestSession ? [{ v: hm(rec.longestSession.minutes), k: 'longest session', d: `${n(rec.longestSession.prompts)} prompts on ${fmtDate(rec.longestSession.from, { month: 'short', day: 'numeric', year: 'numeric' })}, never 45 minutes apart, mostly ${rec.longestSession.project}`, ex: rec.longestSession.example }] : []),
     { v: `${n(rec.sessionHours)}h`, k: 'at it, in sessions', d: `across ${n(rec.sessions)} sessions; a gap over 45 minutes ends one, so idle time isn’t counted` },
-    ...(w.timedTurns ? [{ v: `${n(w.agentHours)}h`, k: 'agents worked on their own', d: 'from the harness’s own turn timings, on record' }] : []),
+    ...(w.timedTurns
+      ? [{
+          v: `${n(w.agentHours)}h${w.agentHoursFloor ? '+' : ''}`,
+          k: 'agents worked on their own',
+          d: [
+            w.agentHoursFloor ? `timed on ${pct(w.perPromptBasis.timed / w.perPromptBasis.prompts)} of prompts${w.agentHoursEst >= w.agentHours * 1.05 ? `, ${about(w.agentHoursEst)}h est. in all` : ''}` : 'from each harness’s own timings',
+            w.subagentHours >= 1 ? `subagents worked ${n(w.subagentHours)}h more` : '',
+          ].filter(Boolean).join('; '),
+        }]
+      : []),
     ...(w.longestTurn ? [{ v: `${(w.longestTurn.min / 60).toFixed(1)}h`, k: 'longest solo run', d: `one prompt, then an agent worked alone, in ${w.longestTurn.project}` }] : []),
     { v: n(r.busiestDay.prompts), k: 'prompts in one day', d: `${fmtDate(r.busiestDay.date, { month: 'long', day: 'numeric', year: 'numeric' })}${r.busiestDay.projects[0] ? `, mostly ${r.busiestDay.projects[0]}` : ''}` },
     ...(proj ? [{ v: proj.name, k: 'favorite project', d: `${n(proj.prompts)} prompts over ${n(proj.activeDays)} days`, ex: proj.firstAsk }] : []),
