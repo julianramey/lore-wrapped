@@ -27,7 +27,7 @@ const write = (name: string, lines: unknown[]) => {
   fs.mkdirSync(path.dirname(f), { recursive: true })
   fs.writeFileSync(f, lines.map((l) => (typeof l === 'string' ? l : JSON.stringify(l))).join('\n') + '\n')
   const st = fs.statSync(f)
-  return { file: f, size: st.size, mtimeMs: st.mtimeMs, archived: false, subagentByPath: f.includes('/subagents/') }
+  return { file: f, size: st.size, mtimeMs: st.mtimeMs, archived: false, subagentByPath: /[\\/]subagents[\\/]/.test(f) }
 }
 
 test('scanLines skips huge lines without assembling them and keeps lines across chunks', async () => {
