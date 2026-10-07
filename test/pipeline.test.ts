@@ -379,6 +379,29 @@ test('a full report from synthetic threads produces valid anonymous stats and a 
   assert.equal(since.twin, null)
 })
 
+test('the report and the share cards date the year from the first prompt on record', async () => {
+  const { buildReport } = await import('../src/pipeline/facts.ts')
+  const { since, period } = await import('../web/src/format.ts')
+  const day = (d: number) => new Date(2025, 6, 1 + d, 14).getTime()
+  const threads: ThreadRecord[] = Array.from({ length: 12 }, (_, i) => ({
+    id: `t${i}`, source: 'claude-code', surface: 'cli', file: '/x', archived: false, cwd: '/p/alpha', project: 'alpha',
+    startedAt: day(i * 5), endedAt: day(i * 5) + 3_600_000, models: { m: 2 }, toolCalls: 2, interrupts: 0, slashCommands: 0,
+    tokens: { m: { in: 1000, cached: 0, out: 900 } }, agentMs: 600_000, linesAdded: 1, linesRemoved: 0, efforts: {}, planModeTurns: 0, warnings: [],
+    events: [
+      { k: 'h', t: day(i * 5) + 60_000, id: `h${i}`, text: 'add a settings page', ln: 1 },
+      { k: 'a', t: day(i * 5) + 300_000, id: `a${i}`, text: 'Done.', tools: 2, toolNames: [], model: 'm', ln: 2, ms: 240_000 },
+    ],
+  }))
+  // Claude Code was first launched in June, but its prompts before July are gone
+  const claudeFirstUse = new Date(2025, 5, 3, 9).getTime()
+  const scan = { threads, coverage: [], scannedAt: 0, scanMs: 1, filesParsed: 12, filesFromCache: 0, bytesParsed: 0, claudeStats: null, claudePlan: null, claudeFirstUse, usage: ledgerFromThreads(threads) }
+  const { report } = buildReport(scan as any)
+  assert.equal(report.coverage.firstUse['claude-code'], claudeFirstUse)
+  assert.deepEqual(report.coverage.gap && [report.coverage.gap.from, report.coverage.gap.to], [claudeFirstUse, report.coverage.recordFrom['claude-code']])
+  assert.equal(since(report), 'Jul ’25')
+  assert.equal(period(report), 'Jul ’25 — Aug ’25')
+})
+
 test('episode value: a code pair that was committed and approved outranks a bare redirect', async () => {
   const { valueEpisode } = await import('../src/pipeline/value.ts')
   const base: any = {

@@ -7,6 +7,7 @@ import type { Report } from '../../src/report-types.ts'
 import { icon } from './icons/render.ts'
 import { OBJECTS } from './icons/scenes.ts'
 import { drawMark } from './mark.ts'
+import { period } from './format.ts'
 import { vsCode } from '../../src/pipeline/versus.ts'
 import { PALETTES, type Palette } from './palettes.ts'
 
@@ -54,10 +55,6 @@ export function availableCards(r: Report): CardKind[] {
 
 const big = (x: number) => (x >= 1e9 ? `${(x / 1e9).toFixed(1)}B` : x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e4 ? `${Math.round(x / 1e3)}k` : Math.round(x).toLocaleString('en-US'))
 const pct = (x: number) => `${Math.round(x * 100)}%`
-const month = (t: number) => {
-  const d = new Date(t)
-  return `${d.toLocaleString('en-US', { month: 'short' })} ’${String(d.getFullYear()).slice(2)}`
-}
 
 export async function fontsReady() {
   await Promise.all(['300 100px "Plex Sans"', '400 40px "Plex Sans"', '600 40px "Plex Sans"', 'italic 400 40px "Plex Sans"', '500 30px "Plex Mono"', '400 30px "Plex Mono"'].map((f) => document.fonts.load(f).catch(() => null)))
@@ -147,7 +144,7 @@ function frame(g: CanvasRenderingContext2D, r: Report, p: Palette, rightLabel?: 
   g.textAlign = 'right'
   g.font = `400 22px ${MONO}`
   g.globalAlpha = 0.55
-  spaced(g, (rightLabel ?? `${month(r.coverage.from)} — ${month(r.coverage.to)}`).toUpperCase(), W - 96, 113, 2)
+  spaced(g, (rightLabel ?? period(r)).toUpperCase(), W - 96, 113, 2)
   g.globalAlpha = 1
   g.textAlign = 'left'
   g.textBaseline = 'alphabetic'
@@ -331,7 +328,7 @@ export function storyImage(kind: CardKind, r: Report): Promise<{ blob: Blob; url
         g.textBaseline = 'middle'
         g.globalAlpha = 0.6
         g.font = `400 26px ${MONO}`
-        spaced(g, `MY ${month(r.coverage.from).toUpperCase()} — ${month(r.coverage.to).toUpperCase()} WITH AGENTS`, W / 2, y - 64, 3)
+        spaced(g, `MY ${period(r).toUpperCase()} WITH AGENTS`, W / 2, y - 64, 3)
         g.globalAlpha = 1
         g.font = `500 44px ${MONO}`
         g.fillText('npx lore-wrapped', W / 2, y + ch + 92)
@@ -737,7 +734,7 @@ function billCard(g: CanvasRenderingContext2D, r: Report) {
   spaced(g, 'AGENTS, ITEMIZED', W / 2, top + 76, 6)
   g.globalAlpha = 0.55
   g.font = `400 20px ${MONO}`
-  g.fillText(`${month(r.coverage.from)} — ${month(r.coverage.to)} · ${big(sp.tokens)} tokens`, W / 2, top + 114)
+  g.fillText(`${period(r)} · ${big(sp.tokens)} tokens`, W / 2, top + 114)
   g.globalAlpha = 1
   g.textAlign = 'left'
   rule(top + 150)

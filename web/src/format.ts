@@ -1,3 +1,4 @@
+import type { Report } from '../../src/report-types.ts'
 import { SOURCES } from '../../src/sources/registry.ts'
 export const n = (x: number) => Math.round(x).toLocaleString('en-US')
 export const pct = (x: number, digits = 0) => (x > 0 && x * 100 < 0.5 * Math.pow(10, -digits) ? `<${digits ? Math.pow(10, -digits) : 1}%` : `${(x * 100).toFixed(digits)}%`)
@@ -19,6 +20,14 @@ export const shortMonth = (t: number) => {
   const d = new Date(t)
   return `${d.toLocaleString('en-US', { month: 'short' })} ’${String(d.getFullYear()).slice(2)}`
 }
+
+/**
+ * The months every number covers: the first prompt on record to the last. A tool may have been
+ * installed earlier (coverage.firstUse: Claude Code's first launch), but nothing from before the
+ * first prompt is counted, so the report's "since" and every share card's dates start here.
+ */
+export const since = (r: Pick<Report, 'coverage'>) => shortMonth(r.coverage.from)
+export const period = (r: Pick<Report, 'coverage'>) => `${since(r)} — ${shortMonth(r.coverage.to)}`
 
 export function hourLabel(h: number): string {
   if (h === 0) return '12am'

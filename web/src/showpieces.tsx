@@ -16,7 +16,7 @@ import { PALETTES } from './palettes.ts'
 import { SOURCES, sourceLabel, type SourceName } from '../../src/sources/registry.ts'
 import { prettyModel } from '../../src/pipeline/modelName.ts'
 import { Quote, useEvidence } from './evidence.tsx'
-import { big, fmtDate, fmtMonth, money, n, pct, plural, shortMonth, SOURCE_LABEL, sourceVar, WEEKDAYS } from './format.ts'
+import { big, fmtDate, fmtMonth, money, n, pct, plural, since, SOURCE_LABEL, sourceVar, WEEKDAYS } from './format.ts'
 
 /** How close a twin is, in words: the similarity behind it is a reading of reputations, not a calibrated score. */
 const fit = (match: number) => (match >= 80 ? 'close match' : match >= 55 ? 'good match' : 'loose match')
@@ -82,7 +82,7 @@ export function Reveal({ r, onShare }: { r: Report; onShare: Share }) {
         </div>
         <div class="rv-copy">
           <span class="label">
-            <b>●</b> since {shortMonth(Math.min(...Object.values(r.coverage.firstUse).filter((x): x is number => x != null), r.coverage.from))} · {big(r.totals.prompts)} prompts on record · {plural(r.totals.threads, 'conversation')}
+            <b>●</b> since {since(r)} · {big(r.totals.prompts)} prompts on record · {plural(r.totals.threads, 'conversation')}
           </span>
           {!open ? (
             <div class="rv-wait">
