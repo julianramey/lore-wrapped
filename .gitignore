@@ -1,0 +1,19 @@
+node_modules/
+dist/
+collector-data/
+*.log
+*.tgz
+.DS_Store
+.claude/
+.wrangler/
+
+# private: strategy and research notes stay on this machine
+research/
+docs/IDEAS.md
+docs/WEDGE.md
+docs/BASELINE.md
+brag-output/
+
+# the website and the API live here but ship separately: this repo is the package
+site/
+worker/

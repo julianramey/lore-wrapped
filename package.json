@@ -1,0 +1,64 @@
+{
+  "name": "lore-wrapped",
+  "version": "0.4.0",
+  "description": "Wrapped for your coding agents: a local recap of your Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and other agent history.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://lore-wrapped.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/julianramey/lore-wrapped.git"
+  },
+  "bugs": "https://github.com/julianramey/lore-wrapped/issues",
+  "bin": {
+    "lore-wrapped": "dist/cli.js",
+    "lore": "dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "dist/worker.js",
+    "dist/index.js",
+    "dist/web",
+    "dist/types",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node dist/cli.js",
+    "collector": "node dist/collector.js",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test test/*.test.ts",
+    "prepare": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
+    "preact": "^11.0.0",
+    "typescript": "^7.0.2"
+  },
+  "main": "dist/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "opencode",
+    "copilot-cli",
+    "wrapped",
+    "ai-agents",
+    "developer-tools",
+    "recap"
+  ]
+}

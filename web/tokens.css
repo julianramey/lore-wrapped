@@ -1,0 +1,331 @@
+/* lore design tokens — shared by the homepage and the local report.
+   Light, terminal-native: IBM Plex, dashed rails, one clay accent.
+   Fonts are self-hosted, so neither surface makes third-party requests. */
+
+@font-face {
+  font-family: 'Plex Sans';
+  src: url('fonts/ibm-plex-sans-latin-300-normal.woff2') format('woff2');
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Sans';
+  src: url('fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Sans';
+  src: url('fonts/ibm-plex-sans-latin-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Sans';
+  src: url('fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Sans';
+  src: url('fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Mono';
+  src: url('fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Mono';
+  src: url('fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+  --sans: 'Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: 'Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --bg: #ffffff;
+  --bg-2: #f8f8f6;
+  --bg-3: #f1f1ee;
+  --card: #ffffff;
+  --ink: #0b0b0a;
+  --ink-2: #4a4a46;
+  --ink-3: #8b8a85;
+  --ink-4: #b9b8b2;
+  --rule: #ebebe7;
+  --rule-2: #dcdbd5;
+  --rail: #e2e1dc;
+
+  --accent: #e0531f;
+  --accent-ink: #b8400f;
+  --accent-wash: #fdeee6;
+  --accent-line: #f5c4ad;
+
+  --claude: #d4552a;
+  --codex: #2f5fb3;
+  --gemini: #1f8f7a;
+  --pi: #4a3aa7;
+  --openclaw: #c0457a;
+  --opencode: #b07c00;
+  --kilo: #2f8fc4;
+  --qwen: #3d7d1e;
+  --copilot: #8250c4;
+  --good: #1f7a45;
+  --warn: #9a5b00;
+  --bad: #b3261e;
+
+  --heat-0: #f1f1ee;
+  --heat-1: #fbd9c8;
+  --heat-2: #f4ac88;
+  --heat-3: #e77d51;
+  --heat-4: #cf5526;
+  --heat-5: #93361a;
+
+  --radius: 12px;
+  --shadow-sm: 0 1px 2px rgba(11, 11, 10, 0.05);
+  --shadow: 0 1px 2px rgba(11, 11, 10, 0.04), 0 8px 24px -12px rgba(11, 11, 10, 0.12);
+  --shadow-lg: 0 2px 4px rgba(11, 11, 10, 0.04), 0 24px 60px -24px rgba(11, 11, 10, 0.22);
+}
+
+/* Shared primitives */
+.pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border: 1px solid var(--rule-2);
+  background: var(--card);
+  border-radius: 999px;
+  padding: 4px 11px 4px 9px;
+  box-shadow: var(--shadow-sm);
+}
+.pill-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.kbd {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--bg-3);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32em;
+  font-family: var(--sans);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  color: var(--ink);
+  text-decoration: none;
+}
+.mark {
+  display: block;
+}
+
+/* ── the lore deck card: the object, drawn like a spec sheet. Scales with its width. */
+.lcard {
+  --c-bg: #fbfaf7;
+  --c-ink: #0b0b0a;
+  --c-accent: #e0531f;
+  --c-muted: #d8d5cc;
+  container-type: inline-size;
+  position: relative;
+  aspect-ratio: 5 / 7;
+  border-radius: 5.5% / 3.93%;
+  background:
+    radial-gradient(120% 70% at 50% 34%, color-mix(in srgb, var(--c-bg) 84%, white) 0%, transparent 70%),
+    var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--sans);
+  text-align: left;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--c-ink) 8%, transparent),
+    0 2px 3px rgba(11, 11, 10, 0.06),
+    0 24px 50px -24px rgba(11, 11, 10, 0.4);
+}
+.lc-in {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 7.5cqw 7.5cqw 6.8cqw;
+}
+.lc-in::before {
+  /* inset hairline */
+  content: '';
+  position: absolute;
+  inset: 3.2cqw;
+  border: 1px solid color-mix(in srgb, var(--c-muted) 85%, transparent);
+  border-radius: 3cqw;
+  pointer-events: none;
+}
+.lc-top,
+.lc-figcap,
+.lc-call,
+.lc-words {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.lc-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 2.9cqw;
+  opacity: 0.62;
+  position: relative;
+}
+.lc-fig {
+  position: relative;
+  aspect-ratio: 1;
+  margin: 1.5cqw 4cqw 0;
+}
+.lc-dial {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--c-muted);
+  stroke-width: 0.35;
+  overflow: visible;
+}
+.lc-dial .lc-cross {
+  stroke-dasharray: 0.8 1.6;
+  opacity: 0.9;
+}
+.lc-dial .lc-inner {
+  stroke-dasharray: 0.5 1.2;
+}
+.lc-icon {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(2%) scale(0.97);
+  transition:
+    opacity 0.5s ease,
+    transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lc-icon canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.lcard.lit .lc-icon {
+  opacity: 1;
+  transform: none;
+}
+.lc-figcap {
+  position: absolute;
+  right: 2cqw;
+  bottom: 0;
+  font-size: 2.3cqw;
+  opacity: 0.5;
+}
+.lc-call {
+  position: absolute;
+  right: 1cqw;
+  top: 4%;
+  width: 36%;
+  display: grid;
+  justify-items: end;
+  gap: 0.6cqw;
+  font-size: 2.3cqw;
+}
+.lc-call svg {
+  position: absolute;
+  left: -38%;
+  top: 30%;
+  width: 46%;
+  height: 52%;
+  fill: none;
+  stroke: var(--c-ink);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.35;
+}
+.lc-call span {
+  opacity: 0.6;
+}
+.lc-call b {
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: 5cqw;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--c-accent);
+}
+.lc-name {
+  font-weight: 300;
+  font-size: 11.2cqw;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  margin-top: auto;
+}
+.lc-name.long {
+  font-size: 9.4cqw;
+}
+.lc-tag {
+  font-style: italic;
+  font-size: 4cqw;
+  line-height: 1.3;
+  opacity: 0.72;
+  margin-top: 1.6cqw;
+  min-height: 2.6em;
+}
+.lc-foot {
+  display: flex;
+  align-items: center;
+  gap: 3cqw;
+  margin-top: 3cqw;
+  padding-top: 3.4cqw;
+  border-top: 1px dashed color-mix(in srgb, var(--c-muted) 90%, transparent);
+}
+.lc-code {
+  display: flex;
+  gap: 1.4cqw;
+}
+.lc-code span {
+  display: grid;
+  place-items: center;
+  width: 7.6cqw;
+  height: 7.6cqw;
+  border-radius: 1.8cqw;
+  border: 1px solid var(--c-muted);
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 3.8cqw;
+}
+.lc-code span.on {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-bg);
+}
+.lc-words {
+  font-size: 2.3cqw;
+  opacity: 0.6;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

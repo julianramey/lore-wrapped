@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>lore — your work with agents</title>
+    <link rel="icon" href="{{favicon}}" />
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      window.__LORE__ = { token: '__LORE_TOKEN__' }
+      try {
+        const t = localStorage.getItem('lore-theme')
+        if (t === 'dark') document.documentElement.dataset.theme = t
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
