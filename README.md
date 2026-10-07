@@ -1,65 +1,76 @@
 # lore
 
-**Wrapped, for your coding agents.**
+[![npm](https://img.shields.io/npm/v/lore-wrapped)](https://www.npmjs.com/package/lore-wrapped)
+[![CI](https://github.com/julianramey/lore-wrapped/actions/workflows/ci.yml/badge.svg)](https://github.com/julianramey/lore-wrapped/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/julianramey/lore-wrapped)](LICENSE)
+
+Wrapped for your coding agents: a local recap of your Claude Code, Codex, Gemini CLI and other agent history.
+
+[Quick start](#quick-start) • [Privacy](#privacy) • [What it reads](#what-it-reads) • [Usage](#usage) • [Development](#development)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/julianramey/lore-wrapped/main/docs/card.png" width="320" alt="A lore share card from a fictional sample run: card XI, The Volcano">
+</p>
+
+## Quick start
 
 ```bash
 npx lore-wrapped
 ```
 
-<img src="https://raw.githubusercontent.com/julianramey/lore-wrapped/main/docs/card.png" width="320" alt="A lore share card from a fictional sample run: card XI, The Volcano">
+Needs Node 22.13+. Reads the agent history already on your machine and opens your report on `127.0.0.1`. No account, and no model calls unless you ask.
 
-**Your agents remember everything.** Every prompt. Every "no, not like that." Every late night.
+```bash
+npx.cmd lore-wrapped                  # Windows PowerShell (its default policy blocks npx.ps1)
+bunx lore-wrapped                     # or: pnpm dlx lore-wrapped
+npx github:julianramey/lore-wrapped   # straight from GitHub, built on your machine
+```
 
-It's all on your disk as plain text. Nobody reads it.
-
-**You did all that work. You should get to look at it.**
-
-One command. About three seconds. Your year, dealt as a card.
+To read the code first: `git clone https://github.com/julianramey/lore-wrapped && cd lore-wrapped && npm install && npm start`.
 
 ## What you get
 
-- **Your card.** One of fourteen in the lore deck, dealt from how you actually work.
-- **Your twin.** The builder whose way of working points the same way as yours.
-- **The bill.** What your tokens would cost at API prices. You guess first.
-- **The swear jar.** Your swear of choice, counted. You said it first.
-- **Your year.** Every day, every agent, every streak, your latest night.
-- **The lore.** First prompts, last words, the file that wouldn't die.
-- **Share cards.** Posts and stories, ready to go. Counts and your card, never your code.
-
-Reads **Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI, Qwen Code, Pi, OpenClaw and Kilo CLI**.
-
-Free. MIT. No account.
-
-## Fast
-
-- **21 GB of history in about 3 seconds.** Under a second once cached.
-- **Streams raw bytes.** It checks the first 768 bytes of each line and only parses the lines it needs.
-- **Every core.** Files parse in a `worker_threads` pool.
-- **Cached** by file size and mtime. A second run rereads only what changed.
-- **No model in the loop.** The analysis is plain code over counts.
+- **Your card**: one of 14 in the lore deck, dealt from how you work, with a four-letter code.
+- **Your twin**: the builder whose way of working points the same way as yours.
+- **Since your last run**: new prompts, new projects, and whether your card changed.
+- **Share cards**: posts and stories with counts and your card, never code, quotes or project names.
+- **The year**: every day as a contribution graph, by agent.
+- **The records**: longest streak and session, busiest day, latest night, and rock bottom.
+- **The branches**: your projects as a git graph.
+- **Your models**: the models that did the most work, what each cost, and how often you redirected it.
+- **The bill**: what your tokens would cost at API prices, next to what your plans cost. You guess first.
+- **In your words**: your most repeated prompt, your most used word, and the swear jar.
+- **Where you rank**: your Claude Code spend per day against Anthropic's published numbers, then the lore index.
+- **The lore**: moments you forgot, from the first prompt of every project to the file that wouldn't die.
+- **The deep dive**: seven spectra, agent hours, lines, languages and commands, each with its definition.
+- **Versus a friend**: swap short codes and see how in sync you are. No server involved.
+- **The data**: every number behind the report, and a calendar reminder for the 1st of the month.
 
 ## Privacy
 
-**Your history stays on your machine.** The report runs on `127.0.0.1` behind a per-run token.
+| What | Where it goes |
+| --- | --- |
+| Your history: prompts, replies, code, paths, project names | Never leaves your machine. The report runs on `127.0.0.1` behind a per-run token. |
+| Anonymous counts (every field below) | lore's collector, when you run lore, at most once a month, starting with your second run. Never in the background. |
+| Repo stats (off unless you turn them on) | lore's collector, after `npx lore-wrapped stats repos on`. Counts across the repos your agents edited; never a name, path, URL or author. |
+| The optional written story | Your own Claude or Codex CLI, only when you ask, on your plan. Never billed per token. |
+| Your email | lore's waitlist, only if you join. Its own list, never linked to stats. |
 
-**No model calls**, unless you ask for the optional written story. That runs through your own Claude or Codex CLI, on your own plan.
+**Why the counts:** they rank you (the report downloads the public index and compares on your machine) and build the public lore index. No account or install id, no IP kept, and raw rows are never published or sold.
 
-**Anonymous counts, for the public index.** When you run lore, at most once a month, it sends counts like how many prompts, how often you redirect and which models. Never a word you typed, a file, a path or a name. Never in the background. Raw rows are never published or sold.
+**Turn it off:**
 
 ```bash
-npx lore-wrapped stats       # print the exact payload
-npx lore-wrapped stats off   # stop sending it, on every run
-npx lore-wrapped --offline   # nothing leaves the machine at all
+npx lore-wrapped stats        # print this run's exact payload
+npx lore-wrapped stats off    # stop sending, on every run (stats on to resume)
+npx lore-wrapped --offline    # nothing leaves the machine: no stats, no index, no model calls
 ```
 
-Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, Claude Code's `DISABLE_TELEMETRY` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and in CI or piped runs. In the EU, the UK and Switzerland, lore asks first.
+Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code's `DISABLE_TELEMETRY` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. CI and piped runs never send.
 
-<details>
-<summary>Every field it sends</summary>
+**Asked first in Europe:** if your system timezone is in the EU, the UK or Switzerland, lore asks before sending, and the default is no. The timezone is checked locally and never sent.
 
-The collector rejects anything not on this list. The table is written from `src/pipeline/indexAgg.ts` by `node scripts/readme-fields.ts`, and a test fails if the code sends a field that isn't here. Sending starts with your second run. To rank you, the report downloads the public index and compares on your machine.
-
-Two things go out only when you choose them: repo stats (`npx lore-wrapped stats repos on`, counts across the repos your agents edited, never a name, path or URL), and your email, if you join the waitlist in the report (its own list, never linked to stats).
+**Every field:** the collector rejects anything not on this list. `node scripts/readme-fields.ts` writes this table from `src/pipeline/indexAgg.ts`, and a test fails if the code sends a field that isn't here.
 
 | Field | What it is |
 | --- | --- |
@@ -131,10 +142,7 @@ Two things go out only when you choose them: repo stats (`npx lore-wrapped stats
 | `kept_rate` | the share of recent agent edits committed within 72 hours *(repo stats only)* |
 | `revert_rate` | the share of those commits reverted within 14 days *(repo stats only)* |
 
-</details>
-
-<details>
-<summary>Don't trust us? Paste this into your agent</summary>
+**Audit us:** paste this into Claude Code, Codex or any agent you trust.
 
 ```text
 Audit the npm package lore-wrapped before I run it. Assume it might be lying to me.
@@ -146,58 +154,15 @@ Audit the npm package lore-wrapped before I run it. Assume it might be lying to 
 6. Rate each finding none, low, medium or high risk, then give me a one-line verdict: is it safe to run, and what should I turn off?
 ```
 
-</details>
+## What it reads
 
-## Next: get paid for it
-
-AI labs pay **$200 to $2,000 for one good coding task** ([Epoch AI, 2026](https://epoch.ai/gradient-updates/state-of-rl-envs)). Your history is full of them.
-
-lore is building the way to sell yours. Floor: your agent work pays for your agent plan. Ceiling: thousands of dollars.
-
-```bash
-npx lore-wrapped manifesto
-```
-
-Questions, or want lore for your team? [inquiries@lore-wrapped.com](mailto:inquiries@lore-wrapped.com)
-
-## Run it
-
-```bash
-npx lore-wrapped                      # from npm
-npx github:julianramey/lore-wrapped   # straight from GitHub, built on your machine
-```
-
-Or read it first: `git clone https://github.com/julianramey/lore-wrapped && cd lore-wrapped && npm install && npm start`.
-
-Node 22.13+. On Windows PowerShell: `npx.cmd lore-wrapped`.
-
-```bash
-npx lore-wrapped                  # scan and open the report
-npx lore-wrapped stats            # print the exact anonymous payload
-npx lore-wrapped stats off|on     # stop or resume sending it
-npx lore-wrapped manifesto        # what lore is for
-npx lore-wrapped --json           # the full report as JSON, nothing sent
-npx lore-wrapped --offline        # no stats, no index, no model calls
-npx lore-wrapped --no-ai          # never call a model
-npx lore-wrapped --no-open --port 4747 --no-anim --no-wsl
-```
-
-Over SSH, it prints the report's address instead of opening a browser.
-
-## Where it looks
-
-Each agent's own history folder, honoring its override (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, `OPENCODE_DATA_DIR`, `COPILOT_HOME`, `QWEN_HOME`, `PI_CODING_AGENT_DIR`, `OPENCLAW_STATE_DIR`, `XDG_DATA_HOME`). On Windows it also reads WSL distros, and inside WSL your Windows profile. Main threads only; forked history counts once.
-
-<details>
-<summary>Every path, per agent</summary>
-
-| Source | Location | Notes |
+| Agent | Location | Notes |
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/*/*.jsonl` | SDK-driven sessions excluded; `subagents/` read for token counts only |
-| Claude Code prompt history | `~/.claude/history.jsonl` | Never cleaned up; rebuilds deleted sessions as prompts-only threads |
-| Claude Code stats | `~/.claude/stats-cache.json` | Tokens by model and day, to estimate days whose transcripts Claude already deleted |
-| Claude plan | `~/.claude.json` | Only the plan type and rate-limit tier, for the plan-cost estimate |
-| Claude Desktop Code | `~/Library/Application Support/Claude/claude-code-sessions` | Joined to the CLI transcript by `cliSessionId` |
+| Claude Code prompt history | `~/.claude/history.jsonl` | Never cleaned up, so sessions Claude deleted after 30 days come back as prompts-only threads |
+| Claude Code stats | `~/.claude/stats-cache.json` | Tokens by model and day, for days whose transcripts are gone |
+| Claude plan | `~/.claude.json` | Only the plan type and rate-limit tier, for the plan cost |
+| Claude Desktop Code | `~/Library/Application Support/Claude/claude-code-sessions` | Joined to the CLI transcript by `cliSessionId`; Windows and Linux app data too |
 | Codex (CLI, IDE, desktop) | `~/.codex/sessions`, `archived_sessions` | Subagents read for token counts only; `exec`/SDK runs excluded |
 | Gemini CLI | `~/.gemini/tmp/*/chats/session-*.json[l]`, `logs.json` | Messages folded by id; deleted chats come back as prompts from `logs.json` |
 | OpenCode | `~/.local/share/opencode/opencode*.db`, `storage/` | Read-only SQLite, plus the pre-1.2 JSON tree; child sessions for token counts only |
@@ -205,29 +170,47 @@ Each agent's own history folder, honoring its override (`CLAUDE_CONFIG_DIR`, `CO
 | GitHub Copilot CLI | `~/.copilot/session-state/*/events.jsonl` | Tokens from each session's running totals |
 | Qwen Code | `~/.qwen/projects/*/chats/*.jsonl` | Usage from assistant records only |
 | Pi | `~/.pi/agent/sessions/*/*.jsonl` | Branches and forks counted once by entry id |
-| OpenClaw | `~/.openclaw` (or `~/.clawdbot`, `~/.moltbot`) | Pi's format; chat envelopes and heartbeats dropped |
+| OpenClaw | `~/.openclaw` (or `~/.clawdbot`, `~/.moltbot`): `agents/*/agent/openclaw-agent.sqlite`, `agents/*/sessions/*.jsonl` | Pi's format; chat envelopes and heartbeats dropped |
 
-</details>
+Each path honors the agent's own override: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, `OPENCODE_DATA_DIR`, `KILO_DB`, `COPILOT_HOME`, `QWEN_HOME`, `PI_CODING_AGENT_DIR`, `OPENCLAW_STATE_DIR`, `XDG_DATA_HOME`.
 
-## Hack on it
+On Windows lore also reads WSL distros, and inside WSL your Windows profile (`--no-wsl` skips both). Main threads only: hidden reasoning, tool output and injected context never enter the report, and forked history counts once.
+
+## Usage
 
 ```bash
-npm install          # installs and builds
-npm test             # node --test over the TypeScript sources
-npm run typecheck
-npm start            # node dist/cli.js; npm start -- stats passes flags
-node scripts/personas.ts   # simulated users, every agent format
+npx lore-wrapped                  # scan, then open the report
+npx lore-wrapped stats            # print the exact anonymous payload
+npx lore-wrapped stats off|on     # stop or resume sending it, on every run
+npx lore-wrapped stats repos on   # also send repo counts (repos off to stop)
+npx lore-wrapped manifesto        # what lore is for
+npx lore-wrapped --json           # the full report as JSON; nothing is sent
+
+# Options
+--offline          # nothing leaves the machine: no stats, no index, no model calls
+--no-stats         # don't send stats this run
+--no-ai            # never call a model
+--no-open          # don't open a browser
+--no-anim          # plain output, no terminal animation
+--port <n>         # port for the local report (default: random)
+--endpoint <url>   # where stats go and the index comes from
+--no-wsl           # on Windows, don't look inside WSL distros
+-v, --version
+-h, --help
 ```
 
-```
-src/sources/      one adapter per agent, and where each keeps history
-src/pipeline/     scan, classify, facts, deep, spend, deck, lore, stats
-src/terminal.ts   the live pane
-src/server/       the local report server
-src/collector/    a reference stats collector
-web/              the report UI (Preact)
-web/src/icons/    the deck's 3D objects, as signed-distance scenes
-```
+Installed globally (`npm i -g lore-wrapped`), the command is also `lore`. Over SSH, lore prints the report's address and an `ssh -L` line instead of opening a browser.
+
+## Why it's fast
+
+21 GB of history in about 3 seconds, under a second once cached.
+
+- **Skips most bytes**: files stream as raw bytes, and only the first 768 bytes of a line decide whether it gets parsed.
+- **Uses every core**: files parse in a `worker_threads` pool.
+- **Remembers**: threads are cached by file size and mtime, so a second run rereads only what changed.
+- **Plain code**: the analysis is rules over counts. No model runs unless you ask for the story.
+
+## Node API
 
 ```ts
 import { scan, buildReport } from 'lore-wrapped'
@@ -236,6 +219,34 @@ const { report } = buildReport(await scan())
 console.log(report.archetype.name, report.deep.work.agentHours)
 ```
 
+The same local pipeline the CLI runs. Nothing in it sends data.
+
+## Development
+
+```bash
+git clone https://github.com/julianramey/lore-wrapped && cd lore-wrapped
+npm install                # installs and builds
+npm test                   # node --test over the TypeScript sources
+npm run typecheck
+npm start                  # node dist/cli.js; npm start -- stats passes flags
+node scripts/personas.ts   # simulated users, every agent format
+```
+
+```
+src/sources/      one adapter per agent, and where each keeps history
+src/pipeline/     scan, classify, facts, deep, spend, deck, lore, stats
+src/terminal.ts   the live terminal pane
+src/server/       the local report server
+src/collector/    a reference stats collector (npm run collector)
+web/              the report UI (Preact)
+scripts/          build, the README field table, simulated users
+test/             node --test suites
+```
+
+## Coming next
+
+Get paid when AI labs want tasks from your history. `npx lore-wrapped manifesto` has the plan.
+
 ## License
 
-MIT
+[MIT](LICENSE). Questions, or lore for your team: [inquiries@lore-wrapped.com](mailto:inquiries@lore-wrapped.com)
