@@ -17,7 +17,7 @@ import { canonicalModel } from '../pipeline/modelName.ts'
 import type { DiscoveredFile } from './claude.ts'
 import { ThreadBuilder, stripInjected } from './common.ts'
 import type { Root } from './roots.ts'
-import { lines, prefix } from './tools.ts'
+import { lines, prefix, relPath } from './tools.ts'
 
 type Flavor = 'pi' | 'openclaw'
 
@@ -134,7 +134,7 @@ function piTool(name: string, args: any, cwd: string) {
   const e = { edits: [] as [string, number, number][], cmds: [] as string[], diff: '' }
   if (!args || typeof args !== 'object') return e
   const file = typeof args.path === 'string' ? args.path : ''
-  const rel = cwd && file.startsWith(cwd + path.sep) ? file.slice(cwd.length + 1) : file
+  const rel = relPath(file, cwd)
   if (name === 'edit' && file) {
     const pairs: { oldText?: string; newText?: string }[] = Array.isArray(args.edits) ? args.edits : [args]
     let add = 0

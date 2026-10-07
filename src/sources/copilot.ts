@@ -16,7 +16,7 @@ import { canonicalModel } from '../pipeline/modelName.ts'
 import type { DiscoveredFile } from './claude.ts'
 import { ThreadBuilder, stripInjected } from './common.ts'
 import type { Root } from './roots.ts'
-import { lines, prefix } from './tools.ts'
+import { lines, prefix, relPath } from './tools.ts'
 
 const list = (dir: string) => {
   try {
@@ -64,7 +64,7 @@ function copilotTool(name: string, rawArgs: unknown, cwd: string) {
   }
   if (!args || typeof args !== 'object') return e
   const file = pick(args, 'path', 'filePath', 'file_path')
-  const rel = cwd && file.startsWith(cwd + path.sep) ? file.slice(cwd.length + 1) : file
+  const rel = relPath(file, cwd)
   const oldText = pick(args, 'old_str', 'oldString', 'old_string')
   const newText = pick(args, 'new_str', 'newString', 'new_string')
   const whole = pick(args, 'file_text', 'content', 'contents')

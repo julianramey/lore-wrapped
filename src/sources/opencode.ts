@@ -15,7 +15,7 @@ import { canonicalModel } from '../pipeline/modelName.ts'
 import type { DiscoveredFile } from './claude.ts'
 import { ThreadBuilder, stripInjected } from './common.ts'
 import type { Root } from './roots.ts'
-import { lines, patchStats, prefix } from './tools.ts'
+import { lines, patchStats, prefix, relPath } from './tools.ts'
 
 export type OpenCodeFlavor = 'opencode' | 'kilo'
 
@@ -70,7 +70,7 @@ function openCodeTool(name: string, input: any, cwd: string) {
   const e = { edits: [] as [string, number, number][], cmds: [] as string[], diff: '' }
   if (!input || typeof input !== 'object') return e
   const file = typeof input.filePath === 'string' ? input.filePath : ''
-  const rel = cwd && file.startsWith(cwd + path.sep) ? file.slice(cwd.length + 1) : file
+  const rel = relPath(file, cwd)
   if ((name === 'edit' || name === 'multiedit') && file) {
     const pairs: { oldString?: string; newString?: string }[] = Array.isArray(input.edits) ? input.edits : [input]
     e.edits.push([rel, pairs.reduce((a, p) => a + lines(p.newString), 0), pairs.reduce((a, p) => a + lines(p.oldString), 0)])

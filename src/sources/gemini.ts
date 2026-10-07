@@ -15,7 +15,7 @@ import { sha1 } from '../util/hash.ts'
 import type { DiscoveredFile } from './claude.ts'
 import { ThreadBuilder, stripInjected } from './common.ts'
 import type { Root } from './roots.ts'
-import { lines, prefix } from './tools.ts'
+import { lines, prefix, relPath } from './tools.ts'
 
 export function discoverGemini(roots: Root[]): DiscoveredFile[] {
   const out: DiscoveredFile[] = []
@@ -64,7 +64,8 @@ export function folderFor(hash: string, files: string[]): string {
   for (const f of files) {
     for (let d = path.dirname(f); d && d !== path.dirname(d) && !seen.has(d); d = path.dirname(d)) {
       seen.add(d)
-      if (sha256(d) === hash) return d
+      // Gemini hashes the folder as the OS writes it; a tool's path may use the other slash
+      for (const v of new Set([d, d.replace(/\//g, '\\'), d.replace(/\\/g, '/')])) if (sha256(v) === hash) return v
     }
   }
   return ''
@@ -98,7 +99,7 @@ export function geminiTool(name: string, args: any, cwd: string) {
   const e = { edits: [] as [string, number, number][], cmds: [] as string[], diff: '' }
   if (!args || typeof args !== 'object') return e
   const file = String(args.file_path || '')
-  const rel = cwd && file.startsWith(cwd + path.sep) ? file.slice(cwd.length + 1) : file
+  const rel = relPath(file, cwd)
   if (name === 'replace' && file) {
     e.edits.push([rel, lines(args.new_string), lines(args.old_string)])
     e.diff = `*** Update File: ${rel}\n@@\n${prefix(args.old_string, '-')}\n${prefix(args.new_string, '+')}`
