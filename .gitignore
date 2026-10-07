@@ -1,6 +1,5 @@
 node_modules/
 dist/
-collector-data/
 *.log
 *.tgz
 .DS_Store

@@ -12,7 +12,6 @@ const node = { bundle: true, platform: 'node', format: 'esm', target: 'node22', 
 await Promise.all([
   build({ ...node, entryPoints: ['src/cli.ts'], outfile: 'dist/cli.js', banner: { js: '#!/usr/bin/env node' } }),
   build({ ...node, entryPoints: ['src/worker.ts'], outfile: 'dist/worker.js' }),
-  build({ ...node, entryPoints: ['src/collector/server.ts'], outfile: 'dist/collector.js', banner: { js: '#!/usr/bin/env node' } }),
   build({ ...node, entryPoints: ['src/index.ts'], outfile: 'dist/index.js' }),
   build({
     entryPoints: ['web/src/main.tsx'],
@@ -58,5 +57,4 @@ const fixSpecifiers = (dir) => {
 fixSpecifiers('dist/types')
 
 fs.chmodSync('dist/cli.js', 0o755)
-fs.chmodSync('dist/collector.js', 0o755)
 console.log('built dist/')

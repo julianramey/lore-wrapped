@@ -1,0 +1,14 @@
+{
+  "name": "lore-collector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "types": "wrangler types",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "wrangler": "^4.148.0"
+  }
+}

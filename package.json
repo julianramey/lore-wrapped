@@ -28,9 +28,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "node dist/cli.js",
-    "collector": "node dist/collector.js",
-    "typecheck": "tsc --noEmit -p .",
-    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p collector",
+    "test": "node --test test/*.test.ts collector/test/*.test.ts",
     "prepare": "node scripts/build.mjs"
   },
   "devDependencies": {

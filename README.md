@@ -58,6 +58,8 @@ To read the code first: `git clone https://github.com/julianramey/lore-wrapped &
 
 **Why the counts:** they rank you (the report downloads the public index and compares on your machine) and build the public lore index. No account or install id, no IP kept, and raw rows are never published or sold.
 
+**The server:** [`collector/`](collector) is exactly what runs at `api.lore-wrapped.com`, a Cloudflare Worker of about 240 lines (`src/index.ts`). It stores each payload with the month it arrived (raw rows kept 13 months) and counters. Every 10 minutes it rebuilds the index from the counters, published only from 25+ runs, with a new snapshot only after 25+ new runs. No IPs or user agents are stored, and no raw row is ever published or sold. Tests are in `collector/test`.
+
 **Turn it off:**
 
 ```bash
@@ -237,10 +239,10 @@ src/sources/      one adapter per agent, and where each keeps history
 src/pipeline/     scan, classify, facts, deep, spend, deck, lore, stats
 src/terminal.ts   the live terminal pane
 src/server/       the local report server
-src/collector/    a reference stats collector (npm run collector)
 web/              the report UI (Preact)
 scripts/          build, the README field table, simulated users
 test/             node --test suites
+collector/        the stats API at api.lore-wrapped.com, a Cloudflare Worker, and its tests
 ```
 
 ## Coming next

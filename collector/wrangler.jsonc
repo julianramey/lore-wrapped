@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lore-collector",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-06",
+  // the API lives at api.lore-wrapped.com; Cloudflare adds its DNS record
+  "routes": [{ "pattern": "api.lore-wrapped.com", "custom_domain": true }],
+  "workers_dev": false,
+  // no request logs: the privacy page says lore keeps no IPs or times
+  "observability": { "enabled": false },
+  "d1_databases": [{ "binding": "DB", "database_name": "lore", "database_id": "eb727d42-5a84-4d67-a5c5-bc5aa5cf12dc" }],
+  "kv_namespaces": [{ "binding": "INDEX", "id": "6a0206fa52bd499daf949ef06b61b2e1" }],
+  "r2_buckets": [{ "binding": "RAW", "bucket_name": "lore-raw" }],
+  "queues": {
+    "producers": [{ "binding": "STATS", "queue": "lore-stats" }],
+    "consumers": [{ "queue": "lore-stats", "max_batch_size": 100, "max_batch_timeout": 10 }]
+  },
+  // a few requests a minute per address: plenty for a monthly payload, little for a flood
+  "ratelimits": [{ "name": "LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
+  "triggers": { "crons": ["*/10 * * * *"] }
+}
