@@ -830,6 +830,11 @@ function WeekChart({ r }: { r: Report }) {
   const BH = 220
   const bw = BW / Math.max(1, weeks.length)
   const fmtV = (v: number) => (mode === 'spend' ? money(v).replace(/\.\d+$/, '') : n(v))
+  const ticks = [0.25, 0.5, 0.75, 1].map((f) => ({ f, label: fmtV(max * f) }))
+  // room for the axis labels: above the top one, which sits on the chart's top edge, and left
+  // of the widest (10px mono, 6 units a character) when it runs past the 38 units it has
+  const PT = 8
+  const PL = Math.max(0, Math.max(...ticks.map((t) => t.label.length)) * 6 - 36)
   return (
     <>
       <div class="wk-head">
@@ -857,18 +862,18 @@ function WeekChart({ r }: { r: Report }) {
           </span>
         )}
       </div>
-      <svg class="week-bars" viewBox={`0 0 ${BW + 44} ${BH + 26}`} role="img" aria-label={mode === 'spend' ? 'API-equivalent spend per week' : 'Prompts per week'}>
+      <svg class="week-bars" viewBox={`${-PL} ${-PT} ${BW + 44 + PL} ${BH + 26 + PT}`} role="img" aria-label={mode === 'spend' ? 'API-equivalent spend per week' : 'Prompts per week'}>
         <defs>
           <pattern id="est-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="5" height="5" fill="var(--heat-1)" />
             <line x1="0" y1="0" x2="0" y2="5" stroke="var(--claude)" stroke-width="2" />
           </pattern>
         </defs>
-        {[0.25, 0.5, 0.75, 1].map((f) => (
+        {ticks.map(({ f, label }) => (
           <g>
             <line x1={44} x2={BW + 44} y1={BH - f * BH} y2={BH - f * BH} />
             <text x={38} y={BH - f * BH + 4} text-anchor="end">
-              {fmtV(max * f)}
+              {label}
             </text>
           </g>
         ))}

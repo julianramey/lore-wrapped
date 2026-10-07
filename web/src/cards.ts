@@ -230,13 +230,23 @@ function label(g: CanvasRenderingContext2D, p: Palette, text: string, y: number)
 
 function bars(g: CanvasRenderingContext2D, p: Palette, rows: { label: string; value: number; display: string }[], y: number, rowH = 62) {
   const max = Math.max(1e-9, ...rows.map((r) => r.value))
+  // The columns fit what's in them: the bars start after the longest label ("you’re absolutely
+  // right" runs past the usual 420) and end before the widest number, keeping a bar at least
+  // 280 wide; a label longer than that shrinks, and past the smallest size, ends in an ellipsis.
+  const GAP = 32
+  g.font = `400 26px ${MONO}`
+  const widest = (xs: string[]) => Math.max(0, ...xs.map((s) => g.measureText(s).width))
+  const x1 = W - 96 - Math.max(120, widest(rows.map((r) => r.display)) + GAP)
+  const x0 = Math.min(x1 - 280, Math.max(420, 96 + widest(rows.map((r) => r.label)) + GAP))
+  const wMax = x1 - x0
   rows.forEach((r, i) => {
     const yy = y + i * rowH
     g.fillStyle = p.ink
+    fit(g, r.label, x0 - 96 - GAP, 26, 400, MONO)
+    let text = r.label
+    while (text.length > 1 && g.measureText(text).width > x0 - 96 - GAP) text = `${text.slice(0, -2)}…`
+    g.fillText(text, 96, yy + 22)
     g.font = `400 26px ${MONO}`
-    g.fillText(r.label, 96, yy + 22)
-    const x0 = 420
-    const wMax = W - 96 - x0 - 120
     g.fillStyle = p.muted
     roundRect(g, x0, yy + 4, wMax, 22, 4)
     g.fill()
