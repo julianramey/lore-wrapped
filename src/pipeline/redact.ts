@@ -18,7 +18,12 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  * every replacement before anything can leave.
  */
 export function makeRedactor(opts: { projectNames: string[]; extraTerms?: string[] }) {
-  const user = os.userInfo().username
+  let user = ''
+  try {
+    user = os.userInfo().username
+  } catch {
+    /* a container user with no passwd entry */
+  }
   const names = [...new Set([...opts.projectNames, ...(opts.extraTerms || [])])]
     .filter((n) => n && n.length >= 3 && !['scratch', 'unknown', '~', 'src', 'app', 'web', 'api'].includes(n.toLowerCase()))
     .sort((a, b) => b.length - a.length)

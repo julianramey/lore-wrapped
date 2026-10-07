@@ -69,6 +69,32 @@ export function loadConfig(overrides: Partial<LoreConfig> = {}): LoreConfig {
   }
 }
 
+let tightened = false
+/**
+ * lore's folder holds parsed history, so it's this user's alone: folders 0700, files 0600
+ * (POSIX; Windows ignores modes). Versions before 0.4.1 made them 0755 and 0644, so the
+ * first write that finds the folder open to others tightens everything already in it.
+ */
+export function privateDir(dir: string) {
+  if (!tightened && process.platform !== 'win32') {
+    tightened = true
+    try {
+      if (fs.statSync(LORE_HOME).mode & 0o077) tighten(LORE_HOME)
+    } catch {
+      /* not there yet, or not ours to change */
+    }
+  }
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+}
+function tighten(dir: string) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) tighten(p)
+    else if (e.isFile()) fs.chmodSync(p, 0o600)
+  }
+  fs.chmodSync(dir, 0o700)
+}
+
 export function readState(): Record<string, any> {
   try {
     return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))
@@ -78,9 +104,9 @@ export function readState(): Record<string, any> {
 }
 
 export function writeState(patch: Record<string, any>) {
-  fs.mkdirSync(LORE_HOME, { recursive: true })
+  privateDir(LORE_HOME)
   const next = { ...readState(), ...patch }
-  fs.writeFileSync(STATE_FILE, JSON.stringify(next, null, 2))
+  fs.writeFileSync(STATE_FILE, JSON.stringify(next, null, 2), { mode: 0o600 })
 }
 
 /** Saves a preference to ~/.lore/config.json, keeping the others. */
@@ -91,6 +117,6 @@ export function saveConfig(patch: Partial<LoreConfig>) {
   } catch {
     /* first preference */
   }
-  fs.mkdirSync(LORE_HOME, { recursive: true })
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...cur, ...patch }, null, 2))
+  privateDir(LORE_HOME)
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...cur, ...patch }, null, 2), { mode: 0o600 })
 }

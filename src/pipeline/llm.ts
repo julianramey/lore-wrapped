@@ -104,17 +104,11 @@ function run(cmd: string, args: string[], input: string, cwd: string, timeoutMs:
   })
 }
 
+/** A new file only: never one someone else put there first. */
 function writeTemp(dir: string, name: string, text: string): string {
   const f = path.join(dir, name)
-  fs.writeFileSync(f, text)
+  fs.writeFileSync(f, text, { flag: 'wx', mode: 0o600 })
   return f
-}
-
-function workdir(): string {
-  // An empty directory: no project instructions, nothing for the model to read.
-  const d = path.join(os.tmpdir(), 'lore-analysis')
-  fs.mkdirSync(d, { recursive: true })
-  return d
 }
 
 const signedIn = new Map<ProviderId, Promise<string | null>>()
@@ -125,7 +119,7 @@ export function planCheck(provider: ProviderId): Promise<string | null> {
       provider,
       (async () => {
         if (provider === 'claude') {
-          const r = await run('claude', ['auth', 'status'], '', os.tmpdir(), 15_000).catch(() => null)
+          const r = await run('claude', ['auth', 'status'], '', os.homedir(), 15_000).catch(() => null)
           let st: any = null
           try {
             st = JSON.parse(r?.stdout || '')
@@ -136,7 +130,7 @@ export function planCheck(provider: ProviderId): Promise<string | null> {
           if (st.authMethod !== 'claude.ai') return 'Claude Code is signed in with an API key or Console account, which bills per token. lore only uses a Claude plan.'
           return null
         }
-        const r = await run('codex', ['login', 'status'], '', os.tmpdir(), 15_000).catch(() => null)
+        const r = await run('codex', ['login', 'status'], '', os.homedir(), 15_000).catch(() => null)
         const text = `${r?.stdout || ''}${r?.stderr || ''}`
         if (/using ChatGPT/i.test(text)) return null
         return /api key/i.test(text) ? 'Codex is signed in with an API key, which bills per token. lore only uses a ChatGPT sign-in.' : 'Codex isn’t signed in. Run `codex login` with your ChatGPT account.'
@@ -148,92 +142,101 @@ export function planCheck(provider: ProviderId): Promise<string | null> {
 export async function callModel<T>(provider: ProviderId, system: string, prompt: string, schema: object, timeoutMs = 180_000): Promise<LlmResult<T>> {
   const refused = await planCheck(provider)
   if (refused) throw new Error(refused)
-  const t0 = Date.now()
-  const cwd = workdir()
-  if (provider === 'claude') {
-    const args = [
-      '-p',
-      '--output-format', 'stream-json',
-      '--verbose',
-      '--model', 'haiku',
-      '--effort', 'low',
-      '--tools', '',
-      '--no-session-persistence',
-      '--strict-mcp-config',
-      '--setting-sources', '',
-      '--disable-slash-commands',
-      // The schema goes in the prompt: --json-schema costs an extra tool-call turn. It goes
-      // in a file because Windows caps a command line at 8,191 characters.
-      '--system-prompt-file', writeTemp(cwd, 'system.txt', `${system}\n\nReturn only one JSON object, no code fences, matching this JSON Schema:\n${JSON.stringify(schema)}`),
-    ]
-    // Hidden thinking was most of the output on a short, fixed task; turn it off.
-    const r = await run('claude', args, prompt, cwd, timeoutMs, { MAX_THINKING_TOKENS: '0' })
-    let out: any = null
-    let limits: any = null
-    for (const line of r.stdout.split('\n')) {
-      if (!line.startsWith('{')) continue
-      try {
-        const ev = JSON.parse(line)
-        if (ev.type === 'result') out = ev
-        else if (ev.type === 'rate_limit_event') limits = ev.rate_limit_info?.unifiedWindows || limits
-      } catch {
-        /* partial line */
-      }
-    }
-    if (!out) throw new Error(`Claude returned no result (exit ${r.code}). ${clipErr(r.stderr || r.stdout)}`)
-    if (out.is_error || out.subtype !== 'success') throw new Error(`Claude: ${clipErr(out.result || out.subtype || 'error')}`)
-    const data = parseLoose(out.result)
-    const u = out.usage || {}
-    const model = Object.keys(out.modelUsage || {})[0] || 'haiku'
-    const windows: PlanWindow[] = []
-    for (const [k, label] of [['five_hour', 'Claude 5-hour window'], ['seven_day', 'Claude weekly window']] as const) {
-      const w = limits?.[k]
-      if (w && typeof w.utilization === 'number') windows.push({ name: label, before: null, after: Math.round(w.utilization * 1000) / 10 })
-    }
-    return {
-      provider,
-      model,
-      data,
-      usage: {
-        inputTokens: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
-        cachedInputTokens: u.cache_read_input_tokens || 0,
-        outputTokens: u.output_tokens || 0,
-        costUsd: out.total_cost_usd,
-      },
-      ms: Date.now() - t0,
-      windows,
+  // A new empty folder per call, 0700: no project instructions, nothing for the model to
+  // read, and no fixed path another user could create or link first. Removed after.
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'lore-'))
+  try {
+    return await (provider === 'claude' ? callClaude<T> : callCodex<T>)(cwd, system, prompt, schema, timeoutMs)
+  } finally {
+    try {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    } catch {
+      /* a killed CLI can hold a file a moment longer on Windows */
     }
   }
+}
 
-  const schemaFile = path.join(cwd, `schema-${process.pid}-${Date.now()}.json`)
-  const outFile = path.join(cwd, `out-${process.pid}-${Date.now()}.json`)
-  fs.writeFileSync(schemaFile, JSON.stringify(schema))
+async function callClaude<T>(cwd: string, system: string, prompt: string, schema: object, timeoutMs: number): Promise<LlmResult<T>> {
+  const t0 = Date.now()
+  const args = [
+    '-p',
+    '--output-format', 'stream-json',
+    '--verbose',
+    '--model', 'haiku',
+    '--effort', 'low',
+    '--tools', '',
+    '--no-session-persistence',
+    '--strict-mcp-config',
+    '--setting-sources', '',
+    '--disable-slash-commands',
+    // The schema goes in the prompt: --json-schema costs an extra tool-call turn. It goes
+    // in a file because Windows caps a command line at 8,191 characters.
+    '--system-prompt-file', writeTemp(cwd, 'system.txt', `${system}\n\nReturn only one JSON object, no code fences, matching this JSON Schema:\n${JSON.stringify(schema)}`),
+  ]
+  // Hidden thinking was most of the output on a short, fixed task; turn it off.
+  const r = await run('claude', args, prompt, cwd, timeoutMs, { MAX_THINKING_TOKENS: '0' })
+  let out: any = null
+  let limits: any = null
+  for (const line of r.stdout.split('\n')) {
+    if (!line.startsWith('{')) continue
+    try {
+      const ev = JSON.parse(line)
+      if (ev.type === 'result') out = ev
+      else if (ev.type === 'rate_limit_event') limits = ev.rate_limit_info?.unifiedWindows || limits
+    } catch {
+      /* partial line */
+    }
+  }
+  if (!out) throw new Error(`Claude returned no result (exit ${r.code}). ${clipErr(r.stderr || r.stdout)}`)
+  if (out.is_error || out.subtype !== 'success') throw new Error(`Claude: ${clipErr(out.result || out.subtype || 'error')}`)
+  const data = parseLoose(out.result)
+  const u = out.usage || {}
+  const model = Object.keys(out.modelUsage || {})[0] || 'haiku'
+  const windows: PlanWindow[] = []
+  for (const [k, label] of [['five_hour', 'Claude 5-hour window'], ['seven_day', 'Claude weekly window']] as const) {
+    const w = limits?.[k]
+    if (w && typeof w.utilization === 'number') windows.push({ name: label, before: null, after: Math.round(w.utilization * 1000) / 10 })
+  }
+  return {
+    provider: 'claude',
+    model,
+    data,
+    usage: {
+      inputTokens: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0),
+      cachedInputTokens: u.cache_read_input_tokens || 0,
+      outputTokens: u.output_tokens || 0,
+      costUsd: out.total_cost_usd,
+    },
+    ms: Date.now() - t0,
+    windows,
+  }
+}
+
+async function callCodex<T>(cwd: string, system: string, prompt: string, schema: object, timeoutMs: number): Promise<LlmResult<T>> {
+  const t0 = Date.now()
+  const schemaFile = writeTemp(cwd, 'schema.json', JSON.stringify(schema))
+  const outFile = path.join(cwd, 'out.json')
   const model = smallCodexModel()
   // `-c features.…` rather than --disable: an unknown name is ignored, not an error, as Codex renames them
   const off = ['apps', 'plugins', 'browser_use', 'browser_use_external', 'computer_use', 'in_app_browser'].flatMap((f) => ['-c', `features.${f}=false`])
   const args = ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '--json', '--output-schema', schemaFile, '-o', outFile, '-C', cwd, '-c', 'model_reasoning_effort="low"', '-c', 'web_search="disabled"', ...off]
   if (model) args.push('-m', model)
   args.push('-')
-  try {
-    const r = await run('codex', args, `${system}\n\nDo not run commands or read files; answer only from the text below.\n\n${prompt}`, cwd, timeoutMs)
-    let usage: Usage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 }
-    for (const line of r.stdout.split('\n')) {
-      if (!line.includes('usage')) continue
-      try {
-        const ev = JSON.parse(line)
-        const u = ev.usage || ev.payload?.usage || ev.msg?.usage
-        if (u) usage = { inputTokens: u.input_tokens || 0, cachedInputTokens: u.cached_input_tokens || 0, outputTokens: u.output_tokens || 0 } // already includes reasoning
-      } catch {
-        /* non-JSON progress line */
-      }
+  const r = await run('codex', args, `${system}\n\nDo not run commands or read files; answer only from the text below.\n\n${prompt}`, cwd, timeoutMs)
+  let usage: Usage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 }
+  for (const line of r.stdout.split('\n')) {
+    if (!line.includes('usage')) continue
+    try {
+      const ev = JSON.parse(line)
+      const u = ev.usage || ev.payload?.usage || ev.msg?.usage
+      if (u) usage = { inputTokens: u.input_tokens || 0, cachedInputTokens: u.cached_input_tokens || 0, outputTokens: u.output_tokens || 0 } // already includes reasoning
+    } catch {
+      /* non-JSON progress line */
     }
-    if (!fs.existsSync(outFile)) throw new Error(`Codex produced no answer (exit ${r.code}). ${clipErr(r.stderr)}`)
-    const data = parseLoose(fs.readFileSync(outFile, 'utf8'))
-    return { provider, model: model || 'default', data, usage, ms: Date.now() - t0, windows: [] }
-  } finally {
-    fs.rmSync(schemaFile, { force: true })
-    fs.rmSync(outFile, { force: true })
   }
+  if (!fs.existsSync(outFile)) throw new Error(`Codex produced no answer (exit ${r.code}). ${clipErr(r.stderr)}`)
+  const data = parseLoose(fs.readFileSync(outFile, 'utf8'))
+  return { provider: 'codex', model: model || 'default', data, usage, ms: Date.now() - t0, windows: [] }
 }
 
 function parseLoose(s: string): any {

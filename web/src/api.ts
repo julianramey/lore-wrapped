@@ -1,11 +1,5 @@
 import type { EvidenceView, Example, Report } from '../../src/report-types.ts'
 
-declare global {
-  interface Window {
-    __LORE__: { token: string }
-  }
-}
-
 export type ProviderId = 'claude' | 'codex'
 export interface Provider {
   id: ProviderId
@@ -87,16 +81,27 @@ export interface Ranks {
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers: { 'x-lore-token': window.__LORE__.token, ...(body ? { 'content-type': 'application/json' } : {}) },
+    headers: body ? { 'content-type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   })
   const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+  if (!res.ok) throw Object.assign(new Error(json.error || `HTTP ${res.status}`), { status: res.status })
   return json as T
 }
 
+/**
+ * The link lore prints carries a one-time code in its fragment, which never goes out in a
+ * request. Trade it for the session cookie, then take it out of the address bar.
+ */
+async function signIn() {
+  const code = new URLSearchParams(location.hash.slice(1)).get('k')
+  if (!code) return
+  history.replaceState(null, '', location.pathname + location.search)
+  await call('POST', '/api/session', { code })
+}
+
 export const api = {
-  boot: () => call<Boot>('GET', '/api/report'),
+  boot: () => signIn().then(() => call<Boot>('GET', '/api/report')),
   evidence: (thread: string, ev: number) => call<EvidenceView>('GET', `/api/evidence?thread=${encodeURIComponent(thread)}&ev=${ev}`),
   reveal: (thread: string) => call('POST', '/api/reveal', { thread }),
   narrative: (provider: ProviderId, tone: 'recap' | 'roast' = 'recap') => call<{ narrative: Narrative; receipt: Receipt | null; budget: Budget }>('POST', '/api/narrative', { provider, tone }),

@@ -97,7 +97,7 @@ export function readClaudeStats(dirs: string[] = [defaultClaudeDir()]): ClaudeSt
 
 /**
  * The Claude plan this machine is signed in with, from Claude Code's own config. Only the
- * plan type and rate-limit tier are read; nothing else in that file is touched.
+ * plan type, rate-limit tier and firstStartTime are read; nothing else in that file is touched.
  */
 const configs = (dirs: string[]) =>
   [...new Set(dirs.flatMap(claudeConfigFiles))]

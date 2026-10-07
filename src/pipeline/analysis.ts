@@ -3,13 +3,14 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { LORE_HOME } from '../config.ts'
+import { LORE_HOME, privateDir } from '../config.ts'
 import type { Example, Report } from '../report-types.ts'
 import { isFeatureSafe } from '../util/safety.ts'
 import { clip } from '../util/text.ts'
 import { sha1 } from '../util/hash.ts'
 import { spreadPick } from './facts.ts'
 import { callModel, type LlmResult, type PlanWindow, type ProviderId, type Usage } from './llm.ts'
+import { makeRedactor } from './redact.ts'
 
 const ANALYSIS_VERSION = 4
 const DIR = path.join(LORE_HOME, 'analysis')
@@ -98,6 +99,9 @@ function narrativeExamples(r: Report): NarrativeCite[] {
 
 function narrativePacket(r: Report, examples: NarrativeCite[]) {
   const month = (t: number) => new Date(t).toLocaleString('en', { month: 'short', year: 'numeric' })
+  // keys, tokens, emails, URLs, paths and your username come out of every quote before it
+  // goes to a model; project names stay, the story is about them
+  const redact = makeRedactor({ projectNames: [] })
   // Keys say exactly what each number is, so the model can't conflate them.
   return {
     period: `${month(r.coverage.from)} – ${month(r.coverage.to)}`,
@@ -142,9 +146,9 @@ function narrativePacket(r: Report, examples: NarrativeCite[]) {
       linesOfCodePerWordYouTyped: r.extras?.leverage ? Math.round(r.extras.leverage.perWord * 10) / 10 : null,
       apiEquivalentBillUsd: Math.round(r.spend.totalUsd),
     },
-    signaturePhrases: r.phrases.filter((p) => p.safe).slice(0, 5).map((p) => ({ phrase: p.text, threadsUsedIn: p.threads })),
+    signaturePhrases: r.phrases.filter((p) => p.safe).slice(0, 5).map((p) => ({ phrase: redact(p.text), threadsUsedIn: p.threads })),
     playfulLabel: { name: r.archetype.name, rule: r.archetype.why },
-    examples: examples.map((c) => ({ id: c.id, project: c.example.project, month: month(c.example.at), text: clip(c.example.text, 260) })),
+    examples: examples.map((c) => ({ id: c.id, project: c.example.project, month: month(c.example.at), text: clip(redact(c.example.text), 260) })),
   }
 }
 
@@ -224,7 +228,7 @@ export async function writeNarrative(r: Report, provider: ProviderId, tone: Tone
   if (!narrative.headline || narrative.paragraphs.length === 0) throw new Error('The model returned an empty recap.')
   // Keep only text that is safe to show in a featured spot.
   if (!isFeatureSafe(narrative.headline)) narrative.headline = 'Your work with agents'
-  fs.mkdirSync(DIR, { recursive: true })
-  fs.writeFileSync(cachePath('narrative', key), JSON.stringify(narrative, null, 2))
+  privateDir(DIR)
+  fs.writeFileSync(cachePath('narrative', key), JSON.stringify(narrative, null, 2), { mode: 0o600 })
   return narrative
 }

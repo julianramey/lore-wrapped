@@ -43,9 +43,11 @@ const HELP = `
     -h, --help
 
   Privacy
-    Your history and the report stay on this machine. Anonymous counts
-    (every field: \`lore stats\`) are sent when you run lore. Running it
-    again the same month doesn't send again. Nothing runs in the background.
+    Your history and the report stay on this machine, except what the
+    optional story sends to your own Claude or Codex when you click it.
+    Anonymous counts (every field: \`lore stats\`) are sent when you run
+    lore. Running it again the same month doesn't send again. Nothing runs
+    in the background.
     Turn it off with \`lore stats off\`, --no-stats or DO_NOT_TRACK=1.
 `
 
@@ -183,7 +185,7 @@ async function main() {
   const server = await startServer({ report, classified, cfg, stats, webDir: path.join(here, 'web') }, Number(opt('port') || 0))
   writeState({ runs: recordRun(runs, markOf(report)) })
   console.log(`\n  ${bold('Turn your card over')} ${accent(server.url)}`)
-  console.log(`  ${dim('Runs only on this machine. Press Ctrl+C to stop.')}\n`)
+  console.log(`  ${dim('Runs only on this machine, in one browser. Press Ctrl+C to stop.')}\n`)
 
   if (flag('no-open') || !launch(openCommand(server.url, host()))) {
     const h = host()

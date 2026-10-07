@@ -3,7 +3,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { LORE_HOME } from '../config.ts'
+import { LORE_HOME, privateDir } from '../config.ts'
 import { readCodexLimits, type PlanWindow, type ProviderId, type Usage } from './llm.ts'
 
 export interface RunReceipt {
@@ -40,8 +40,8 @@ export async function measured<T extends { usage: Usage; ms: number; model: stri
   const receipt: RunReceipt = { id: crypto.randomUUID().slice(0, 8), at: Date.now(), action, provider, model: result.model, calls: result.calls, ms: result.ms, usage: result.usage, windows, cached: !!result.cached }
   if (!receipt.cached) {
     try {
-      fs.mkdirSync(LORE_HOME, { recursive: true })
-      fs.appendFileSync(FILE, JSON.stringify(receipt) + '\n')
+      privateDir(LORE_HOME)
+      fs.appendFileSync(FILE, JSON.stringify(receipt) + '\n', { mode: 0o600 })
     } catch {
       /* receipts are informational */
     }

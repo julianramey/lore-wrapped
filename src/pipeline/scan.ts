@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { ADAPTER_VERSION, CACHE_DIR } from '../config.ts'
+import { ADAPTER_VERSION, CACHE_DIR, privateDir } from '../config.ts'
 import { discoverClaude, discoverClaudeDesktop, parseClaudeFile, type DiscoveredFile } from '../sources/claude.ts'
 import { discoverOpenClaw, discoverPi, parseOpenClawFile, parsePiFile } from '../sources/pi.ts'
 import { discoverOpenCode, parseOpenCodeFile } from '../sources/opencode.ts'
@@ -81,7 +81,7 @@ function readCache(df: DiscoveredFile): FileOutcome | null {
 
 function writeCache(df: DiscoveredFile, outcome: FileOutcome) {
   try {
-    fs.writeFileSync(cachePath(df.file), JSON.stringify({ v: ADAPTER_VERSION, size: df.size, mtimeMs: df.mtimeMs, outcome }))
+    fs.writeFileSync(cachePath(df.file), JSON.stringify({ v: ADAPTER_VERSION, size: df.size, mtimeMs: df.mtimeMs, outcome }), { mode: 0o600 })
   } catch {
     /* cache is an optimization */
   }
@@ -127,7 +127,7 @@ async function runPool(jobs: Job[], workerUrl: URL | null, onDone: (job: Job, o:
 
 export async function scan(opts: { workerUrl?: URL | null; onProgress?: (p: ScanProgress) => void; roots?: Roots } = {}): Promise<ScanResult> {
   const t0 = Date.now()
-  fs.mkdirSync(CACHE_DIR, { recursive: true })
+  privateDir(CACHE_DIR)
   opts.onProgress?.({ phase: 'discover', done: 0, total: 0, bytesDone: 0, bytesTotal: 0 })
 
   const roots = opts.roots ?? discoverRoots()

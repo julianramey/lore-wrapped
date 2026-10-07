@@ -17,10 +17,15 @@ export interface GitSignal {
   basis: string
 }
 
-/** A read-only git command, or null when it fails or runs past four seconds. */
+/**
+ * A read-only git command, or null when it fails or runs past four seconds. Nothing is
+ * fetched: in a partial clone, git would otherwise download missing objects from the remote
+ * (GIT_NO_LAZY_FETCH from git 2.44, no protocols before that), and it never asks for credentials.
+ */
 export function git(cwd: string, args: string[], maxBuffer = 4 << 20): Promise<string | null> {
+  const env = { ...process.env, GIT_NO_LAZY_FETCH: '1', GIT_TERMINAL_PROMPT: '0' }
   return new Promise((resolve) => {
-    execFile('git', ['-C', cwd, ...args], { timeout: 4000, maxBuffer }, (err, stdout) => resolve(err ? null : stdout))
+    execFile('git', ['-c', 'protocol.allow=never', '-C', cwd, ...args], { timeout: 4000, maxBuffer, env }, (err, stdout) => resolve(err ? null : stdout))
   })
 }
 

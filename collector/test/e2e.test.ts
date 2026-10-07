@@ -642,7 +642,6 @@ test('g: the CLI places its own run in the published index (src/server/local.ts 
   const own = (await import('../../src/pipeline/stats.ts')).buildStats(SAMPLE.report) as any
   const webDir = path.join(TMP, 'web')
   fs.mkdirSync(webDir, { recursive: true })
-  fs.writeFileSync(path.join(webDir, 'index.html'), '__LORE_TOKEN__')
 
   const placed = async (e: Env) => {
     // the CLI's fetch of {endpoint}/v1/index goes to this worker; everything else is real
@@ -654,8 +653,9 @@ test('g: the CLI places its own run in the published index (src/server/local.ts 
     }) as typeof fetch
     const srv = await startServer({ report: SAMPLE.report, classified: [], cfg: { endpoint: ENDPOINT, ai: false, offline: false } as any, stats: {} as any, webDir })
     try {
-      const token = await (await realFetch(srv.url)).text()
-      const res = await realFetch(`${srv.url}api/ranks`, { headers: { 'x-lore-token': token } })
+      // the printed link's one-time code, traded for the session cookie as the page does
+      const session = await realFetch(new URL('/api/session', srv.url), { method: 'POST', body: JSON.stringify({ code: new URL(srv.url).hash.slice(3) }) })
+      const res = await realFetch(new URL('/api/ranks', srv.url), { headers: { cookie: session.headers.get('set-cookie')!.split(';')[0] } })
       assert.equal(res.status, 200)
       return (await res.json()) as { available: boolean; runs: number; rows: { key: string; value: number; top: number | null }[] }
     } finally {

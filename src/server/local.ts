@@ -1,5 +1,7 @@
-// The local report server. Binds to 127.0.0.1 only; every API call needs the
-// per-run token and a localhost Host header, so web pages can't reach it.
+// The local report server. Binds to 127.0.0.1 only. The link lore prints carries a one-time
+// code in its fragment (never sent in a request); the page trades it once for an HttpOnly
+// session cookie. Every API call needs that cookie, a localhost Host header and no foreign
+// Origin, so other users on the machine and other web pages can't reach the report.
 
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -21,6 +23,8 @@ import type { ThreadRecord } from '../types.ts'
 
 /** One total budget of model calls per run. */
 export const MODEL_CALL_BUDGET = 3
+/** How long the printed link's code works, if no browser used it yet. */
+const CODE_TTL_MS = 10 * 60_000
 
 export interface ServerState {
   report: Report
@@ -31,7 +35,10 @@ export interface ServerState {
 }
 
 export async function startServer(state: ServerState, port = 0): Promise<{ url: string; close: () => void }> {
-  const token = crypto.randomBytes(18).toString('base64url')
+  // the printed link's one-time code, and the one browser session it turns into
+  const code = crypto.randomBytes(18).toString('base64url')
+  const codeExpires = Date.now() + CODE_TTL_MS
+  let session = ''
   const threads = new Map<string, ThreadRecord>(state.classified.map((c) => [`${c.thread.source}:${c.thread.id}`, c.thread]))
   const byKey = new Map(state.classified.map((c) => [`${c.thread.source}:${c.thread.id}`, c]))
   const budget = { used: 0, limit: MODEL_CALL_BUDGET, busy: false }
@@ -149,8 +156,25 @@ export async function startServer(state: ServerState, port = 0): Promise<{ url: 
       const host = String(req.headers.host || '')
       if (host !== `127.0.0.1:${listenPort}` && host !== `localhost:${listenPort}`) return send(res, 421, { error: 'Bad host' })
       const url = new URL(req.url || '/', `http://${host}`)
-      if (!url.pathname.startsWith('/api/')) return serveStatic(res, state.webDir, url.pathname, token)
-      if (req.headers['x-lore-token'] !== token) return send(res, 403, { error: 'Missing token' })
+      if (!url.pathname.startsWith('/api/')) return serveStatic(res, state.webDir, url.pathname)
+      // a page on another origin (another port on 127.0.0.1 too) can't act with the cookie
+      if (req.headers.origin && req.headers.origin !== `http://${host}`) return send(res, 403, { error: 'Cross-origin request' })
+      // named per port, so two runs of lore at once keep their own sessions
+      const name = `lore_${listenPort}`
+      const signedIn = !!session && String(req.headers.cookie || '').split(/;\s*/).includes(`${name}=${session}`)
+      if (req.method === 'POST' && url.pathname === '/api/session') {
+        const body = await readBody(req)
+        // the same browser opening the link again is already in
+        if (!signedIn) {
+          if (body?.code !== code) throw httpError(403, 'This link is from another run of lore. Open the latest link it printed.')
+          if (session) throw httpError(403, 'This link was already used. Run lore again for a fresh one.')
+          if (Date.now() > codeExpires) throw httpError(403, 'This link has expired. Run lore again for a fresh one.')
+          session = crypto.randomBytes(32).toString('base64url')
+          res.setHeader('set-cookie', `${name}=${session}; HttpOnly; SameSite=Strict; Path=/`)
+        }
+        return send(res, 200, { ok: true })
+      }
+      if (!signedIn) return send(res, 403, { error: 'Open the link lore printed in your terminal.' })
       const handler = routes[`${req.method} ${url.pathname}`]
       if (!handler) return send(res, 404, { error: 'Not found' })
       const body = req.method === 'POST' ? await readBody(req) : null
@@ -162,7 +186,7 @@ export async function startServer(state: ServerState, port = 0): Promise<{ url: 
 
   await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve))
   listenPort = (server.address() as any).port
-  return { url: `http://127.0.0.1:${listenPort}/`, close: () => server.close() }
+  return { url: `http://127.0.0.1:${listenPort}/#k=${code}`, close: () => server.close() }
 }
 
 /** Where this run sits in the public index. Reads the aggregate; sends nothing. */
@@ -220,21 +244,19 @@ function readBody(req: http.IncomingMessage): Promise<any> {
 
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' }
 
-function serveStatic(res: http.ServerResponse, dir: string, pathname: string, token: string) {
+function serveStatic(res: http.ServerResponse, dir: string, pathname: string) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
   const file = path.join(dir, path.normalize(rel))
   if (!file.startsWith(dir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404)
     return res.end('Not found')
   }
-  let body: Buffer | string = fs.readFileSync(file)
   const ext = path.extname(file)
-  if (ext === '.html') body = body.toString('utf8').replace('__LORE_TOKEN__', token)
   res.writeHead(200, {
     'content-type': MIME[ext] || 'application/octet-stream',
     'cache-control': 'no-store',
     'content-security-policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self'",
     'x-frame-options': 'DENY',
   })
-  res.end(body)
+  res.end(fs.readFileSync(file))
 }

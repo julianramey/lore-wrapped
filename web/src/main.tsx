@@ -13,7 +13,7 @@ const readTab = (): Tab => (location.hash === '#data' ? 'data' : 'recap')
 
 function App() {
   const [boot, setBoot] = useState<Boot | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ text: string; hint?: string } | null>(null)
   const [tab, setTab] = useState<Tab>(readTab())
   const [share, setShare] = useState<string | null>(null)
   const [evidence, setEvidence] = useState<EvidenceRef | null>(null)
@@ -31,7 +31,8 @@ function App() {
         setStats(b.stats)
         setReceipts(b.receipts || [])
       },
-      (e) => setError(e.message || String(e)),
+      // a used or stale link says what to do itself; anything else is likely lore having stopped
+      (e) => setError(e.status === 403 ? { text: e.message } : { text: `Couldn’t load the report: ${e.message || e}`, hint: 'Is lore still running in your terminal?' }),
     )
     const onHash = () => {
       const t = location.hash.replace('#', '')
@@ -74,8 +75,8 @@ function App() {
     return (
       <div class="loading">
         <div>
-          <p>Couldn’t load the report: {error}</p>
-          <p class="muted">Is lore still running in your terminal?</p>
+          <p>{error.text}</p>
+          {error.hint && <p class="muted">{error.hint}</p>}
         </div>
       </div>
     )

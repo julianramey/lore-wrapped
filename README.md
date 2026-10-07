@@ -50,15 +50,16 @@ To read the code first: `git clone https://github.com/julianramey/lore-wrapped &
 
 | What | Where it goes |
 | --- | --- |
-| Your history: prompts, replies, code, paths, project names | Stays on your machine. The report runs on `127.0.0.1` behind a per-run token. |
+| Your history: prompts, replies, code, paths, project names | Stays on your machine, except what the optional story sends when you click it. Parsed copies are cached in `~/.lore`, readable only by you. The report runs on `127.0.0.1` and opens from a one-time link. |
 | Anonymous counts (every field below) | Sent to lore's collector when you run lore. Running it again the same month doesn't send again. Nothing runs in the background. |
 | Repo stats (off unless you turn them on) | Only after `npx lore-wrapped stats repos on`: counts across the repos your agents edited, with no names, paths, URLs or authors. |
-| The optional written story | Written by your own Claude or Codex CLI on your plan, only when you click for it. |
+| The public index | Downloaded from lore's collector (`GET /v1/index`) when the report opens, to rank you on your machine. Nothing about you is sent. It still happens with stats off; `--offline` skips it. |
+| The optional written story | Only when you click for it, through your own Claude or Codex CLI on your own plan. It gets lore's numbers, your top project names, and up to 8 short prompt excerpts and 5 phrases you repeat, with secrets, emails, URLs and paths redacted. For Codex, lore also reads your plan's rate-limit window before and after (via `codex app-server`) to show what the call cost. |
 | Your email | Only if you join the waitlist. Kept in its own list, separate from the stats. |
 
 **Why the counts:** they rank you (the report downloads the public index and compares on your machine) and build the public lore index. No account or install id, no IP kept, and raw rows are never published or sold.
 
-**The server:** [`collector/`](collector) is exactly what runs at `api.lore-wrapped.com`, a Cloudflare Worker of about 240 lines (`src/index.ts`). It stores each payload with the month it arrived (raw rows kept 13 months) and counters. Every 10 minutes it rebuilds the index from the counters, published only from 25+ runs, with a new snapshot only after 25+ new runs. No IPs or user agents are stored, and no raw row is ever published or sold. Tests are in `collector/test`.
+**The server:** you can't inspect a server from your machine, so its code is public. [`collector/`](collector) is exactly what runs at `api.lore-wrapped.com`, a Cloudflare Worker of about 240 lines (`src/index.ts`). It stores each payload with the month it arrived (raw rows kept 13 months) and counters. Every 10 minutes it rebuilds the index from the counters, published only from 25+ runs, with a new snapshot only after 25+ new runs. No IPs or user agents are stored, and no raw row is ever published or sold. Tests are in `collector/test`.
 
 **Turn it off:**
 
@@ -151,7 +152,7 @@ Audit the npm package lore-wrapped before I run it. Assume it might be lying to 
 1. Get the code without running it: `npm pack lore-wrapped`, then unpack the .tgz into a scratch folder (or clone its GitHub repo).
 2. Find every network call (fetch, http, https, net, dns, WebSocket, and any child process that could reach the network) and every file it reads or writes outside that folder.
 3. For each one: what data, sent where, when, and what triggers it.
-4. Compare that with the Privacy section of the package's README.md and flag anything it sends that isn't listed there.
+4. Compare that with the Privacy section of the package's README.md and flag anything it sends that isn't listed there. What the server does with it is in the GitHub repo's collector/ folder.
 5. Run `npx lore-wrapped stats` and check that the printed payload is all the code would send.
 6. Rate each finding none, low, medium or high risk, then give me a one-line verdict: is it safe to run, and what should I turn off?
 ```
@@ -163,7 +164,7 @@ Audit the npm package lore-wrapped before I run it. Assume it might be lying to 
 | Claude Code | `~/.claude/projects/*/*.jsonl` | SDK-driven sessions excluded; `subagents/` read for token counts only |
 | Claude Code prompt history | `~/.claude/history.jsonl` | Never cleaned up, so sessions Claude deleted after 30 days come back as prompts-only threads |
 | Claude Code stats | `~/.claude/stats-cache.json` | Tokens by model and day, for days whose transcripts are gone |
-| Claude plan | `~/.claude.json` | Only the plan type and rate-limit tier, for the plan cost |
+| Claude plan | `~/.claude.json` | Only the plan type and rate-limit tier, for the plan cost, and `firstStartTime`, for when you started |
 | Claude Desktop Code | `~/Library/Application Support/Claude/claude-code-sessions` | Joined to the CLI transcript by `cliSessionId`; Windows and Linux app data too |
 | Codex (CLI, IDE, desktop) | `~/.codex/sessions`, `archived_sessions` | Subagents read for token counts only; `exec`/SDK runs excluded |
 | Gemini CLI | `~/.gemini/tmp/*/chats/session-*.json[l]`, `logs.json` | Messages folded by id; deleted chats come back as prompts from `logs.json` |
@@ -201,7 +202,7 @@ npx lore-wrapped --json           # the full report as JSON; nothing is sent
 -h, --help
 ```
 
-Installed globally (`npm i -g lore-wrapped`), the command is also `lore`. Over SSH, lore prints the report's address and an `ssh -L` line instead of opening a browser.
+Installed globally (`npm i -g lore-wrapped`), the command is also `lore`. The link lore prints opens the report in one browser; run lore again for a fresh one. Over SSH, lore prints the link and an `ssh -L` line instead of opening a browser.
 
 ## Why it's fast
 
