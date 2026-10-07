@@ -33,7 +33,7 @@ To read the code first: `git clone https://github.com/julianramey/lore-wrapped &
 - **Your card**: one of 14 in the lore deck, dealt from how you work, with a four-letter code.
 - **Your twin**: the builder whose way of working points the same way as yours.
 - **Since your last run**: new prompts, new projects, and whether your card changed.
-- **Share cards**: posts and stories with counts and your card, never code, quotes or project names.
+- **Share cards**: posts and stories with counts and your card. No code, quotes or project names.
 - **The year**: every day as a contribution graph, by agent.
 - **The records**: longest streak and session, busiest day, latest night, and rock bottom.
 - **The branches**: your projects as a git graph.
@@ -50,11 +50,11 @@ To read the code first: `git clone https://github.com/julianramey/lore-wrapped &
 
 | What | Where it goes |
 | --- | --- |
-| Your history: prompts, replies, code, paths, project names | Never leaves your machine. The report runs on `127.0.0.1` behind a per-run token. |
-| Anonymous counts (every field below) | lore's collector, when you run lore, at most once a month, starting with your second run. Never in the background. |
-| Repo stats (off unless you turn them on) | lore's collector, after `npx lore-wrapped stats repos on`. Counts across the repos your agents edited; never a name, path, URL or author. |
-| The optional written story | Your own Claude or Codex CLI, only when you ask, on your plan. Never billed per token. |
-| Your email | lore's waitlist, only if you join. Its own list, never linked to stats. |
+| Your history: prompts, replies, code, paths, project names | Stays on your machine. The report runs on `127.0.0.1` behind a per-run token. |
+| Anonymous counts (every field below) | Sent to lore's collector when you run lore. Running it again the same month doesn't send again. Nothing runs in the background. |
+| Repo stats (off unless you turn them on) | Only after `npx lore-wrapped stats repos on`: counts across the repos your agents edited, with no names, paths, URLs or authors. |
+| The optional written story | Written by your own Claude or Codex CLI on your plan, only when you click for it. |
+| Your email | Only if you join the waitlist. Kept in its own list, separate from the stats. |
 
 **Why the counts:** they rank you (the report downloads the public index and compares on your machine) and build the public lore index. No account or install id, no IP kept, and raw rows are never published or sold.
 
@@ -83,7 +83,7 @@ Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code'
 | `threads` | how many conversations |
 | `prompts` | how many prompts you sent |
 | `active_days` | how many days you used agents |
-| `projects` | how many projects (never their names) |
+| `projects` | how many projects (just the number, no names) |
 | `median_prompt_words` | how many words a typical prompt runs |
 | `steer_rate` | the share of your follow-ups that redirect the agent |
 | `approval_rate` | the share of your follow-ups that are short approvals (“yes”, “go”) |
@@ -125,22 +125,22 @@ Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code'
 | `long_threads` | conversations with 2+ hours of agent work or 100+ tool calls |
 | `spec_prompt_share` | the share of opening prompts that run 100 words or more |
 | `edit_langs` | which languages agents edited, as rounded shares of lines, from a fixed list |
-| `mcp_kinds` | which kinds of MCP tools agents used (issue tracker, database, browser…), from a fixed list, never server names |
+| `mcp_kinds` | which kinds of MCP tools agents used (issue tracker, database, browser…), from a fixed list, without server names |
 | `os` | macOS, Linux, Windows or WSL |
 | `first_run_month` | the month lore first ran on this machine, so we can tell new runs from returning ones without an id |
 | `lore_runs` | how many times lore has run on this machine |
-| `notice` | which version of the privacy notice was in effect (never whether you were asked, which would hint at where you live) |
+| `notice` | which version of the privacy notice was in effect (not whether you were asked, which would hint at where you live) |
 | `repos` | how many git repos agents edited in *(repo stats only)* |
 | `repos_tests` | how many of them have a test suite *(repo stats only)* |
 | `repos_ci` | how many have CI config *(repo stats only)* |
 | `repos_container` | how many have a Dockerfile, compose file, devcontainer or Nix file *(repo stats only)* |
 | `agent_md` | how many have an AGENTS.md, CLAUDE.md or GEMINI.md *(repo stats only)* |
-| `repo_frameworks` | which frameworks appear, from a fixed list, never package names *(repo stats only)* |
+| `repo_frameworks` | which frameworks appear, from a fixed list, without package names *(repo stats only)* |
 | `repo_files` | how many repos fall in each size range by tracked files *(repo stats only)* |
 | `repo_age` | how many repos fall in each age range since their first commit *(repo stats only)* |
-| `remote_hosts` | how many repos are on GitHub, GitLab, Bitbucket, Azure, elsewhere or nowhere; never the URL *(repo stats only)* |
+| `remote_hosts` | how many repos are on GitHub, GitLab, Bitbucket, Azure, elsewhere or nowhere; the URL stays on your machine *(repo stats only)* |
 | `license_families` | how many repos are permissive, copyleft, other or unlicensed *(repo stats only)* |
-| `team_size` | how many repos had 1, 2–5, 6–20 or 21+ authors in 90 days; authors are counted, never sent *(repo stats only)* |
+| `team_size` | how many repos had 1, 2–5, 6–20 or 21+ authors in 90 days; only the counts are sent, not the authors *(repo stats only)* |
 | `kept_rate` | the share of recent agent edits committed within 72 hours *(repo stats only)* |
 | `revert_rate` | the share of those commits reverted within 14 days *(repo stats only)* |
 

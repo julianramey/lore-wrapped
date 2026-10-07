@@ -15,7 +15,7 @@
     "producers": [{ "binding": "STATS", "queue": "lore-stats" }],
     "consumers": [{ "queue": "lore-stats", "max_batch_size": 100, "max_batch_timeout": 10 }]
   },
-  // a few requests a minute per address: plenty for a monthly payload, little for a flood
+  // a few requests a minute per address: plenty for one payload per run, little for a flood
   "ratelimits": [{ "name": "LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
   "triggers": { "crons": ["*/10 * * * *"] }
 }

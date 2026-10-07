@@ -59,7 +59,7 @@ export interface StatsStatus {
   enabled: boolean
   endpoint: string
   payload: Record<string, unknown>
-  state: 'sent' | 'already-sent' | 'disabled' | 'no-endpoint' | 'failed' | 'pending' | 'first-run'
+  state: 'sent' | 'already-sent' | 'disabled' | 'no-endpoint' | 'failed' | 'pending'
   detail: string
   lastSentMonth: string | null
 }

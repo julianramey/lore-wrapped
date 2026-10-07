@@ -425,7 +425,7 @@ function NarrativeBand({ report: r, narrative, providers, budget, receipts, onNa
                 <button class={tone === 'recap' ? 'on' : ''} aria-pressed={tone === 'recap'} onClick={() => setTone('recap')}>
                   Straight
                 </button>
-                <button class={tone === 'roast' ? 'on' : ''} aria-pressed={tone === 'roast'} onClick={() => setTone('roast')} title="The same counted facts, with a raised eyebrow. Habits only, never the person.">
+                <button class={tone === 'roast' ? 'on' : ''} aria-pressed={tone === 'roast'} onClick={() => setTone('roast')} title="The same counted facts, with a raised eyebrow. It roasts habits, not people.">
                   Roast me
                 </button>
               </div>}

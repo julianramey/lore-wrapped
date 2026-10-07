@@ -68,7 +68,7 @@ async function body(req: Request): Promise<any> {
   }
 }
 
-/** One request per IP every few seconds is plenty for a monthly payload; the IP isn't kept. */
+/** One request per IP every few seconds is plenty for one payload per run; the IP isn't kept. */
 async function limited(req: Request, env: Env) {
   const ip = req.headers.get('cf-connecting-ip') || 'unknown'
   const { success } = await env.LIMIT.limit({ key: ip })

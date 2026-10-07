@@ -50,7 +50,7 @@ export const MANIFESTO: ManifestoSection[] = [
   {
     title: 'WHAT WE TAKE TODAY',
     paras: [
-      'when you run lore, at most once a month: anonymous counts. how many prompts. how often you redirect. which models you use. nothing runs in the background.',
+      'when you run lore: anonymous counts. how many prompts. how often you redirect. which models you use. nothing runs in the background.',
       '**never a word you typed. never a file or a name. never a row published or sold.**',
       'those counts rank your report, build the public index, and tell us which kinds of work are worth paying for.',
       'every field: `npx lore-wrapped stats`. stop it: `npx lore-wrapped stats off`.',

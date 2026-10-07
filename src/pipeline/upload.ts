@@ -1,5 +1,6 @@
-// The one thing that leaves the machine for our collector: anonymous aggregate stats,
-// sent during a run of lore, at most once a month. Nothing is scheduled; no run, no send.
+// The one thing that leaves the machine for our collector: anonymous aggregate stats, sent
+// when you run lore. Running it again the same month doesn't send again. Nothing is
+// scheduled: no run, no send.
 
 import { VERSION, readState, writeState, type LoreConfig } from '../config.ts'
 import { isWsl } from '../util/platform.ts'
@@ -13,7 +14,7 @@ export interface StatsStatus {
   repoStats: boolean
   endpoint: string
   payload: AnonStats
-  state: 'sent' | 'already-sent' | 'disabled' | 'no-endpoint' | 'failed' | 'pending' | 'first-run'
+  state: 'sent' | 'already-sent' | 'disabled' | 'no-endpoint' | 'failed' | 'pending'
   detail: string
   lastSentMonth: string | null
 }
@@ -57,19 +58,15 @@ export function statsStatus(report: Report, cfg: LoreConfig): StatsStatus {
   if (!cfg.stats) return { ...base, state: 'disabled', detail: `Turned off by ${cfg.statsOff || 'your config'}.` }
   if (!cfg.endpoint) return { ...base, state: 'no-endpoint', detail: 'No collector configured, so nothing is sent.' }
   if (last === monthKey(Date.now())) return { ...base, state: 'already-sent', detail: `Already sent this month (${last}).` }
-  return { ...base, state: 'pending', detail: 'Will send once this month.' }
+  return { ...base, state: 'pending', detail: 'Not sent yet this month.' }
 }
 
 /**
  * Sends at most once per calendar month, so repeat runs don't inflate counts without needing
- * an id. A machine's first run only shows the notice; sending starts with the next one.
+ * an id. The first run sends too, and the run that sends says so.
  */
 export async function sendStatsIfDue(report: Report, cfg: LoreConfig, force = false): Promise<StatsStatus> {
   const st = statsStatus(report, cfg)
-  if (st.state === 'pending' && !readState().statsNoticeAt && !force) {
-    writeState({ statsNoticeAt: Date.now() })
-    return { ...st, state: 'first-run', detail: 'Not sent: this was the first run on this machine, so lore only told you. From your next run on, when you run lore, at most once a month.' }
-  }
   if (st.state !== 'pending' && !(force && st.state === 'already-sent')) return st
   const errs = validateStats(st.payload)
   if (errs.length) return { ...st, state: 'failed', detail: `Refused to send invalid stats: ${errs.join(', ')}` }

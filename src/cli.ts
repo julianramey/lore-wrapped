@@ -10,7 +10,7 @@ import { SOURCES } from './sources/registry.ts'
 import { discoverRoots } from './sources/roots.ts'
 import { buildStats } from './pipeline/stats.ts'
 import { repoShape } from './pipeline/supply.ts'
-import { countRun, machineFacts, sendStatsIfDue } from './pipeline/upload.ts'
+import { countRun, machineFacts, sendStatsIfDue, type StatsStatus } from './pipeline/upload.ts'
 import { startServer } from './server/local.ts'
 import { finalBlock, livePane, paint, stopPane } from './terminal.ts'
 import { host, launch, openCommand } from './util/platform.ts'
@@ -23,7 +23,7 @@ const HELP = `
     lore stats           print the exact anonymous stats this run would send
     lore stats off|on    stop or resume sending them, on every run
     lore stats repos on  also send counts across the repos agents edited in
-                         (tests, CI, sizes, ages, hosts; never a name or path)
+                         (tests, CI, sizes, ages, hosts; no names or paths)
     lore manifesto       what lore is for, and how it will make money
     lore --json          print the full local report as JSON (nothing is sent)
 
@@ -43,11 +43,10 @@ const HELP = `
     -h, --help
 
   Privacy
-    Your history and the report never leave this machine. When you run lore,
-    it sends anonymous counts (every field: \`lore stats\`), at most once a
-    month, starting with your second run; the first run only tells you. lore
-    never runs in the background. Turn it off with \`lore stats off\`,
-    --no-stats or DO_NOT_TRACK=1.
+    Your history and the report stay on this machine. Anonymous counts
+    (every field: \`lore stats\`) are sent when you run lore. Running it
+    again the same month doesn't send again. Nothing runs in the background.
+    Turn it off with \`lore stats off\`, --no-stats or DO_NOT_TRACK=1.
 `
 
 const { dim, bold, accent } = paint
@@ -75,7 +74,7 @@ async function main() {
   }
   if (args[0] === 'stats' && (args[1] === 'off' || args[1] === 'on')) {
     saveConfig({ stats: args[1] === 'on' })
-    return void console.log(args[1] === 'on' ? '\n  Anonymous stats are on: sent when you run lore, at most once a month. `lore stats off` stops them.\n' : '\n  Anonymous stats are off on this machine. `lore stats on` turns them back on.\n')
+    return void console.log(args[1] === 'on' ? "\n  Anonymous stats are on: sent when you run lore. Running it again the same month doesn't send again. `lore stats off` stops them.\n" : '\n  Anonymous stats are off on this machine. `lore stats on` turns them back on.\n')
   }
   const cfg = loadConfig({ endpoint: opt('endpoint'), stats: flag('no-stats') ? false : undefined, ai: flag('no-ai') ? false : undefined, offline: flag('offline') || undefined })
   // a run whose output goes to a file or pipe is a script, not a person deciding to share
@@ -153,25 +152,20 @@ async function main() {
     Object.assign(cfg, { stats: yes, statsOff: yes ? undefined : 'your answer', askFirst: false })
   }
   const stats = await sendStatsIfDue(report, cfg)
-  const statsLine: Record<string, string> = {
-    sent: `sent ${dim('(counts only — see the Data tab)')}`,
+  const statsLine: Record<StatsStatus['state'], string> = {
+    // the run that sends says what it sent and how to see or stop it, the first run included
+    sent: `sent: anonymous counts for the public index. ${dim('Counts only: no prompts, code, paths or names.')}`,
     'already-sent': `already sent this month`,
-    disabled: `off ${dim(`(${cfg.statsOff || 'your config'})`)}`,
-    'no-endpoint': `not sent ${dim('— no collector configured')}`,
-    failed: `not sent ${dim(`— ${stats.detail}`)}`,
-    pending: `pending`,
-    'first-run': `start with your next run`,
+    disabled: `anonymous aggregate stats off ${dim(`(${cfg.statsOff || 'your config'})`)}`,
+    'no-endpoint': `anonymous aggregate stats not sent ${dim('— no collector configured')}`,
+    failed: `anonymous aggregate stats not sent ${dim(`— ${stats.detail}`)}`,
+    pending: `anonymous aggregate stats pending`,
   }
   if (cfg.offline) console.log(`  ${dim('Offline')}  nothing leaves this machine: no stats, no index, no uploads, no model calls`)
   else {
-    console.log(`  ${dim('Stats')}  anonymous aggregate stats ${statsLine[stats.state]}`)
-    // someone who just answered the question has read all this already
-    if (stats.state === 'first-run' && !asking) {
-      console.log(dim('         When you run lore, at most once a month, it sends anonymous counts and'))
-      console.log(dim('         rounded shares, never a word you typed, a file, a path or a name.'))
-      console.log(dim('         Nothing was sent today, and nothing runs in the background.'))
-      console.log(dim(`         See every field: ${bold('npx lore-wrapped stats')}  ·  turn it off: ${bold('npx lore-wrapped stats off')}`))
-    }
+    console.log(`  ${dim('Stats')}  ${statsLine[stats.state]}`)
+    if (stats.state === 'sent')
+      console.log(`         ${dim('See them:')} ${bold('npx lore-wrapped stats')} ${dim('· Stop:')} ${bold('npx lore-wrapped stats off')}`)
     if (!cfg.ai) console.log(`  ${dim('Models')} off: lore won't call a model this run`)
   }
 
@@ -215,10 +209,10 @@ main().catch(async (e) => {
 /** Where a notice isn't consent (EU, UK, Switzerland), lore asks once, and no is the default. */
 async function ask(): Promise<boolean> {
   const { createInterface } = await import('node:readline/promises')
-  console.log(`  ${bold('One question')} ${dim('(asked once, here because a notice isn’t enough where you are)')}`)
-  console.log(dim('  When you run lore, at most once a month, it can send anonymous counts and rounded shares'))
-  console.log(dim('  that rank your report and build the public index. Never a word you typed, a file,'))
-  console.log(dim(`  a path or a name. Every field: ${bold('npx lore-wrapped stats')}. Change it any time: ${bold('lore stats on|off')}.`))
+  console.log(`  ${bold('One question, asked once')}`)
+  console.log(dim('  lore can send anonymous counts when you run it. They rank your report and build'))
+  console.log(dim('  the public index. Counts only: no prompts, code, paths or names.'))
+  console.log(`  ${dim('See every field:')} ${bold('npx lore-wrapped stats')}`)
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   const a = await rl.question(`  Send them? ${dim('[y/N]')} `)
   rl.close()

@@ -194,11 +194,11 @@ export function DataView({ report: r, stats, setStats, budget, receipts, toast }
 function StatsPanel({ stats, setStats, toast }: { stats: StatsStatus; setStats: (s: StatsStatus) => void; toast: (m: string, err?: boolean) => void }) {
   const [busy, setBusy] = useState(false)
   const cls = stats.state === 'sent' || stats.state === 'already-sent' ? 'good' : stats.state === 'failed' ? 'bad' : stats.state === 'disabled' ? '' : 'warn'
-  const label: Record<string, string> = { sent: 'sent', 'already-sent': 'sent this month', disabled: 'off', 'no-endpoint': 'no collector configured', failed: 'failed', pending: 'pending', 'first-run': 'starts next run' }
+  const label: Record<StatsStatus['state'], string> = { sent: 'sent', 'already-sent': 'sent this month', disabled: 'off', 'no-endpoint': 'no collector configured', failed: 'failed', pending: 'pending' }
   return (
     <div class="panel third">
       <h3>What we send</h3>
-      <p class="note">Anonymous counts, sent when you run lore, at most once a month (lore never runs in the background): counts and rounded shares that build the public index and rank your report. No text, paths, project names, ids or times. This is the whole payload.</p>
+      <p class="note">Anonymous counts, sent when you run lore. Running it again the same month doesn't send again. Nothing runs in the background. They build the public index and rank your report. Counts only: no text, paths, project names, ids or times. This is the whole payload.</p>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px' }}>
         <span class={`status-pill ${cls}`}>{label[stats.state]}</span>
         <label class="switch">
@@ -215,7 +215,7 @@ function StatsPanel({ stats, setStats, toast }: { stats: StatsStatus; setStats: 
           />
           send anonymous stats
         </label>
-        <label class="switch" title="Counts across the git repos agents edited in: tests, CI, sizes, ages, hosts, licenses. Never a name, path, URL or author.">
+        <label class="switch" title="Counts across the git repos agents edited in: tests, CI, sizes, ages, hosts, licenses. No names, paths, URLs or authors.">
           <input
             type="checkbox"
             checked={stats.repoStats}
@@ -235,7 +235,7 @@ function StatsPanel({ stats, setStats, toast }: { stats: StatsStatus; setStats: 
         </label>
       </div>
       <p class="note">{stats.detail}</p>
-      {stats.repoStats ? null : <p class="note">Repo stats are off: turning them on adds counts across the repos agents edited in (tests, CI, sizes, ages, hosts, licenses). Never a name, path, URL or author.</p>}
+      {stats.repoStats ? null : <p class="note">Repo stats are off: turning them on adds counts across the repos agents edited in (tests, CI, sizes, ages, hosts, licenses), with no names, paths, URLs or authors.</p>}
       <pre class="json">{JSON.stringify(stats.payload, null, 2)}</pre>
       {stats.endpoint && stats.enabled && (
         <button
