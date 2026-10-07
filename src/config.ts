@@ -21,8 +21,6 @@ export interface LoreConfig {
   stats: boolean
   /** What turned stats off, for the status line: a flag, an env signal or the config file. */
   statsOff?: string
-  /** In the EU, UK and Switzerland stats wait for a yes; true until one is given (or a no). */
-  askFirst?: boolean
   /** Also send counts across the repos agents edited in (`lore stats repos on`). Off unless chosen. */
   repoStats?: boolean
   /** Optional model calls (the written story) through the user's own CLI. */
@@ -38,14 +36,6 @@ export interface LoreConfig {
  */
 export const STATS_OFF = ['LORE_NO_STATS', 'DO_NOT_TRACK', 'DISABLE_TELEMETRY', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CI']
 
-/**
- * Whether this machine's timezone is in the EU/EEA, the UK or Switzerland, where a notice isn't
- * consent: lore asks before sending there. Checked locally from the system timezone; never sent.
- */
-export function asksFirst(tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''): boolean {
-  return /^Europe\//.test(tz) || /^(Atlantic\/(Canary|Madeira|Azores|Reykjavik|Faroe)|Asia\/(Nicosia|Famagusta)|Arctic\/Longyearbyen)$/.test(tz)
-}
-
 export function loadConfig(overrides: Partial<LoreConfig> = {}): LoreConfig {
   let file: Partial<LoreConfig> = {}
   try {
@@ -56,13 +46,12 @@ export function loadConfig(overrides: Partial<LoreConfig> = {}): LoreConfig {
   const env = (k: string) => !!process.env[k] && process.env[k] !== '0' && process.env[k] !== 'false'
   const offline = overrides.offline ?? (env('LORE_OFFLINE') || file.offline === true)
   const signal = STATS_OFF.find(env)
-  const askFirst = file.stats === undefined && asksFirst()
-  const statsOff = offline ? '--offline' : overrides.stats === false ? '--no-stats' : signal ?? (file.stats === false ? CONFIG_FILE : askFirst ? 'no answer yet (here lore asks first)' : undefined)
+  // a saved `stats: false` (from `lore stats off`, or a "no" to 0.4.0's question) keeps them off
+  const statsOff = offline ? '--offline' : overrides.stats === false ? '--no-stats' : signal ?? (file.stats === false ? CONFIG_FILE : undefined)
   return {
     endpoint: offline ? '' : (overrides.endpoint ?? process.env.LORE_ENDPOINT ?? file.endpoint ?? DEFAULT_ENDPOINT).replace(/\/+$/, ''),
     stats: !statsOff && (overrides.stats ?? file.stats ?? true),
     statsOff,
-    askFirst: askFirst && !offline && !signal && overrides.stats !== false,
     repoStats: file.repoStats === true,
     ai: offline ? false : (overrides.ai ?? (env('LORE_NO_AI') ? false : (file.ai ?? true))),
     offline,

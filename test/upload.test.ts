@@ -53,3 +53,22 @@ test('the first run sends the counts, later runs that month send nothing, and of
     fs.rmSync(tmp, { recursive: true, force: true })
   }
 })
+
+test('with nothing saved stats are on, wherever the clock is; a saved no (stats off, or 0.4.0’s question) stays off', async () => {
+  const { loadConfig, saveConfig, CONFIG_FILE, STATS_OFF } = await import('../src/config.ts')
+  const saved = Object.fromEntries(['TZ', 'LORE_OFFLINE', ...STATS_OFF].map((k) => [k, process.env[k]]))
+  for (const k of ['LORE_OFFLINE', ...STATS_OFF]) delete process.env[k]
+  process.env.TZ = 'Europe/Berlin'
+  try {
+    fs.rmSync(process.env.LORE_HOME!, { recursive: true, force: true })
+    assert.deepEqual([loadConfig().stats, loadConfig().statsOff], [true, undefined], 'no config: the same default everywhere')
+    saveConfig({ stats: false })
+    assert.deepEqual([loadConfig().stats, loadConfig().statsOff], [false, CONFIG_FILE], 'a saved no keeps them off')
+    assert.equal(loadConfig({ endpoint: 'https://collector.test' }).stats, false)
+    saveConfig({ stats: true })
+    assert.equal(loadConfig().stats, true, 'a saved yes keeps them on')
+  } finally {
+    for (const [k, v] of Object.entries(saved)) v === undefined ? delete process.env[k] : (process.env[k] = v)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+})

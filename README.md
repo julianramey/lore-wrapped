@@ -71,8 +71,6 @@ npx lore-wrapped --offline    # nothing leaves the machine: no stats, no index, 
 
 Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code's `DISABLE_TELEMETRY` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. CI and piped runs never send.
 
-**Asked first in Europe:** if your system timezone is in the EU, the UK or Switzerland, lore asks before sending, and the default is no. The timezone is checked locally and never sent.
-
 **Every field:** the collector rejects anything not on this list. `node scripts/readme-fields.ts` writes this table from `src/pipeline/indexAgg.ts`, and a test fails if the code sends a field that isn't here.
 
 | Field | What it is |
@@ -130,7 +128,7 @@ Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code'
 | `os` | macOS, Linux, Windows or WSL |
 | `first_run_month` | the month lore first ran on this machine, so we can tell new runs from returning ones without an id |
 | `lore_runs` | how many times lore has run on this machine |
-| `notice` | which version of the privacy notice was in effect (not whether you were asked, which would hint at where you live) |
+| `notice` | which version of the privacy notice was in effect |
 | `repos` | how many git repos agents edited in *(repo stats only)* |
 | `repos_tests` | how many of them have a test suite *(repo stats only)* |
 | `repos_ci` | how many have CI config *(repo stats only)* |

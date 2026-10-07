@@ -260,7 +260,7 @@ test('stats validation accepts only the exact allowlist', () => {
   assert.ok(validateStats({ ...ok, tokens: 1e16 }).includes('bad tokens'), 'nothing past a real ceiling')
   assert.ok(validateStats({ ...ok, mcp_kinds: { 'acme-internal-mcp': 1 } }).includes('bad mcp_kinds.acme-internal-mcp'))
   assert.ok(validateStats({ ...ok, edit_langs: { klingon: 0.5 } }).includes('bad edit_langs.klingon'))
-  assert.ok(validateStats({ ...ok, notice: 'n1.asked' }).includes('bad notice'), 'never whether someone was asked: that says where they live')
+  assert.ok(validateStats({ ...ok, notice: 'n1.x' }).includes('bad notice'), 'only the notice version, nothing more')
   // single words only from fixed lists: a private prompt or a slur can never ride along
   assert.ok(validateStats({ ...ok, top_reply: 'deploy aurelia to prod' }).includes('bad top_reply'))
   assert.ok(validateStats({ ...ok, top_swear: 'anything' }).includes('bad top_swear'))
@@ -480,12 +480,6 @@ test('the pay estimate is a loose range from conversations a test could check, a
   assert.equal(payEstimate(0), null)
   // 48 candidates: 20% accepted at $200 with half to you, up to 40% at $2,000
   assert.deepEqual(payEstimate(48), { tasks: 48, low: 960, high: 19_000 })
-})
-
-test('in the EU, UK and Switzerland lore asks before sending; elsewhere a notice comes first', async () => {
-  const { asksFirst } = await import('../src/config.ts')
-  for (const tz of ['Europe/Berlin', 'Europe/London', 'Europe/Zurich', 'Atlantic/Canary', 'Asia/Nicosia']) assert.equal(asksFirst(tz), true, tz)
-  for (const tz of ['America/New_York', 'Asia/Tokyo', 'UTC', '']) assert.equal(asksFirst(tz), false, tz)
 })
 
 test('rank comes from a published distribution, never from thin air', () => {

@@ -147,12 +147,6 @@ async function main() {
   console.log('')
 
   countRun()
-  const asking = !!(cfg.askFirst && cfg.endpoint && process.stdin.isTTY && process.stdout.isTTY)
-  if (asking) {
-    const yes = await ask()
-    saveConfig({ stats: yes })
-    Object.assign(cfg, { stats: yes, statsOff: yes ? undefined : 'your answer', askFirst: false })
-  }
   const stats = await sendStatsIfDue(report, cfg)
   const statsLine: Record<StatsStatus['state'], string> = {
     // the run that sends says what it sent and how to see or stop it, the first run included
@@ -207,17 +201,3 @@ main().catch(async (e) => {
   console.error(`\n  lore failed: ${e?.stack || e}\n`)
   process.exit(1)
 })
-
-/** Where a notice isn't consent (EU, UK, Switzerland), lore asks once, and no is the default. */
-async function ask(): Promise<boolean> {
-  const { createInterface } = await import('node:readline/promises')
-  console.log(`  ${bold('One question, asked once')}`)
-  console.log(dim('  lore can send anonymous counts when you run it. They rank your report and build'))
-  console.log(dim('  the public index. Counts only: no prompts, code, paths or names.'))
-  console.log(`  ${dim('See every field:')} ${bold('npx lore-wrapped stats')}`)
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const a = await rl.question(`  Send them? ${dim('[y/N]')} `)
-  rl.close()
-  console.log('')
-  return /^y(es)?$/i.test(a.trim())
-}

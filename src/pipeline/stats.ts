@@ -28,7 +28,7 @@ export interface Machine {
   firstRunMonth: string
   /** Lifetime runs here, this one included. */
   runs: number
-  /** Which version of the privacy notice covered this payload. Not whether they were asked: that would say where they live. */
+  /** Which version of the privacy notice covered this payload. */
   notice: typeof NOTICE
 }
 

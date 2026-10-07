@@ -113,7 +113,7 @@ export const FIELD_DOCS: Record<string, string> = {
   os: 'macOS, Linux, Windows or WSL',
   first_run_month: 'the month lore first ran on this machine, so we can tell new runs from returning ones without an id',
   lore_runs: 'how many times lore has run on this machine',
-  notice: 'which version of the privacy notice was in effect (not whether you were asked, which would hint at where you live)',
+  notice: 'which version of the privacy notice was in effect',
   // v5, only with repo stats on: counts across the repos agents edited in, never one repo
   repos: 'how many git repos agents edited in (repo stats only)',
   repos_tests: 'how many of them have a test suite (repo stats only)',
