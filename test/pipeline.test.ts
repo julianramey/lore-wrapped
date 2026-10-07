@@ -469,12 +469,17 @@ test('rank comes from a published distribution, never from thin air', () => {
   const dist = { '0-99': 10, '100-499': 10, '500-999': 5 }
   // the bottom of the 100-499 step: 10 runs below, so 60% at or above
   assert.equal(topShare(100, dist)!.toFixed(2), '0.60')
-  // halfway through the top step
-  assert.equal(topShare(750, dist)!.toFixed(2), '0.10')
+  // halfway through the top step, on the log scale the steps grow on (√(500·1000) ≈ 707)
+  assert.equal(topShare(707, dist)!.toFixed(2), '0.10')
   assert.equal(topShare(5000, dist), null)
   assert.equal(topShare(50, {}), null)
   // a step merged for privacy still places a run inside it
-  assert.equal(topShare(5500, { '0-999': 30, '1000-9999': 30 })!.toFixed(2), '0.25')
+  assert.equal(topShare(3162, { '0-999': 30, '1000-9999': 30 })!.toFixed(2), '0.25')
+  // the step from 0 reads linearly
+  assert.equal(topShare(50, dist)!.toFixed(2), '0.80')
+  // with few runs in, one step spans decades; a typical run lands mid-step, not near the bottom
+  // (read linearly, 10,000 in 2000-49999 came out as "top 83%")
+  assert.equal(topShare(10_000, { '2000-49999': 30 })!.toFixed(2), '0.50')
 })
 
 test('the index from counters matches the index from rows: exact counts, percentiles within a bin', async () => {
@@ -520,6 +525,20 @@ test('the index never publishes a bucket thinner than K runs: thin ones join a n
   const rows = Array.from({ length: 25 }, (_, i) => ({ prompts: i === 0 ? 31_000 : 1200 + i }))
   const agg = aggregate(rows, 25)
   assert.ok(Object.values(agg.dist.prompts).every((n) => n >= 25))
+})
+
+test('a number fewer than K runs send (repo stats are opt-in) gets no distribution, from rows or counters', async () => {
+  const { aggregate, aggregateCounts, countRow } = await import('../src/pipeline/indexAgg.ts')
+  // 30 runs publish, but only 3 of them turned repo stats on
+  const rows = Array.from({ length: 30 }, (_, i) => ({ prompts: 1000 + i, ...(i < 3 ? { repos: 4 + i } : {}) }))
+  const c = new Map<string, number>()
+  for (const r of rows) countRow(c, r)
+  for (const agg of [aggregate(rows, 25), aggregateCounts(c, 25)]) {
+    assert.deepEqual(agg.dist.prompts, { '1000-1999': 30 })
+    assert.equal(agg.dist.repos, undefined)
+    assert.equal(agg.median.repos, undefined)
+    assert.equal(agg.totals.repos, undefined)
+  }
 })
 
 test('keeping a year of Claude history keeps every other setting and never clobbers a broken file', () => {

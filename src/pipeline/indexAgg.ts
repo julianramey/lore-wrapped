@@ -175,7 +175,9 @@ export function aggregate(rows: any[], k: number): IndexAgg {
     }
     const d: Record<string, number> = {}
     for (const r of rows) if (typeof r[f] === 'number') d[step(r[f])] = (d[step(r[f])] || 0) + 1
-    if (Object.keys(d).length) out.dist[f] = mergeThin(d, k)
+    // a field fewer than K runs send (repo stats are opt-in) has no distribution at all:
+    // merging can't make a step of K out of fewer runs
+    if (xs.length >= k) out.dist[f] = mergeThin(d, k)
   }
   for (const f of FIELDS.enums) {
     const c = new Map<string, number>()
@@ -288,7 +290,7 @@ export function aggregateCounts(c: Map<string, number>, k: number): IndexAgg {
   }
   for (const f of FIELDS.numbers) {
     const d = Object.fromEntries(get('d', f).map(([[label], n]) => [label, n]))
-    if (Object.keys(d).length) out.dist[f] = mergeThin(d, k)
+    if (Object.values(d).reduce((a, b) => a + b, 0) >= k) out.dist[f] = mergeThin(d, k)
     const bins = get('b', f).map(([[b], n]) => [Number(b), n] as [number, number]).sort((a, b) => a[0] - b[0])
     const total = bins.reduce((a, [, n]) => a + n, 0)
     if (total < k) continue

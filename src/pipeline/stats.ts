@@ -129,7 +129,10 @@ export type RankKey = (typeof RANKED)[number]['key']
 
 /**
  * Your share of runs at or above you, from a published distribution in steps (thin steps
- * merged): the runs below your step, plus your place inside it, linearly.
+ * merged): the runs below your step, plus your place inside it. Steps grow 1, 2, 5, 10…, so
+ * that place is read on a log scale, the way the index places its percentiles: a merged step
+ * can span decades ("2000-49999" while few runs are in), and read linearly it put a typical
+ * run near the bottom. The step from 0 is read linearly.
  */
 export function topShare(own: number, dist: Record<string, number>): number | null {
   const lo = (b: string) => Number(b.split(/[-+]/)[0])
@@ -137,8 +140,10 @@ export function topShare(own: number, dist: Record<string, number>): number | nu
   const mine = Object.keys(dist).find((b) => holds(b, own))
   if (!runs || !mine) return null
   const below = Object.entries(dist).filter(([b]) => lo(b) < lo(mine)).reduce((a, [, n]) => a + n, 0)
-  const top = mine.endsWith('+') ? lo(mine) * 2 : Number(mine.split('-')[1]) + 1
-  const within = Math.min(1, Math.max(0, (own - lo(mine)) / Math.max(1, top - lo(mine))))
+  const from = lo(mine)
+  const top = mine.endsWith('+') ? from * 2 : Number(mine.split('-')[1]) + 1
+  const at = from > 0 ? Math.log(own / from) / Math.log(top / from) : (own - from) / Math.max(1, top - from)
+  const within = Math.min(1, Math.max(0, at))
   return Math.max(0.01, 1 - (below + dist[mine] * within) / runs)
 }
 
