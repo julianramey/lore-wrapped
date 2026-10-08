@@ -69,7 +69,7 @@ npx lore-wrapped stats off    # stop sending, on every run (stats on to resume)
 npx lore-wrapped --offline    # nothing leaves the machine: no stats, no index, no model calls
 ```
 
-Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code's `DISABLE_TELEMETRY` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. CI and piped runs never send.
+Also off with `--no-stats`, `DO_NOT_TRACK=1`, `LORE_NO_STATS=1`, or Claude Code's `DISABLE_TELEMETRY` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. CI never sends, and neither do piped runs, unless a coding agent is running lore for you (Claude Code, Codex, Gemini CLI, Qwen Code, OpenCode and Kilo mark the commands they run).
 
 **Every field:** the collector rejects anything not on this list. `node scripts/readme-fields.ts` writes this table from `src/pipeline/indexAgg.ts`, and a test fails if the code sends a field that isn't here.
 

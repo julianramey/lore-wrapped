@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { VERSION, loadConfig, readState, saveConfig, writeState } from './config.ts'
+import { VERSION, gateStats, loadConfig, readState, saveConfig, writeState } from './config.ts'
 import { buildReport } from './pipeline/facts.ts'
 import { scan } from './pipeline/scan.ts'
 import { markOf, recordRun, sinceLast } from './pipeline/since.ts'
@@ -32,7 +32,8 @@ const HELP = `
     --no-open            don't open a browser
     --no-stats           don't send anonymous stats this run (also off with
                          DO_NOT_TRACK, LORE_NO_STATS, CI, or Claude Code's
-                         DISABLE_TELEMETRY / CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)
+                         DISABLE_TELEMETRY / CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC,
+                         and for piped runs, unless a coding agent runs lore for you)
     --no-ai              never call a model: the optional story is switched off
     --offline            nothing leaves this machine: no stats, no index, no
                          model calls
@@ -78,9 +79,8 @@ async function main() {
     saveConfig({ stats: args[1] === 'on' })
     return void console.log(args[1] === 'on' ? "\n  Anonymous stats are on: sent when you run lore. Running it again the same month doesn't send again. `lore stats off` stops them.\n" : '\n  Anonymous stats are off on this machine. `lore stats on` turns them back on.\n')
   }
-  const cfg = loadConfig({ endpoint: opt('endpoint'), stats: flag('no-stats') ? false : undefined, ai: flag('no-ai') ? false : undefined, offline: flag('offline') || undefined })
-  // a run whose output goes to a file or pipe is a script, not a person deciding to share
-  if (cfg.stats && !process.stdout.isTTY) Object.assign(cfg, { stats: false, statsOff: 'a non-terminal run' })
+  // a run whose output goes to a file or pipe is a script, unless a coding agent is running lore for someone
+  const cfg = gateStats(loadConfig({ endpoint: opt('endpoint'), stats: flag('no-stats') ? false : undefined, ai: flag('no-ai') ? false : undefined, offline: flag('offline') || undefined }))
   const quiet = flag('json') || args[0] === 'stats'
   const here = path.dirname(fileURLToPath(import.meta.url))
   const workerUrl = new URL('./worker.js', import.meta.url)

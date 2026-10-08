@@ -101,3 +101,43 @@ test('a payload the collector would refuse is never sent and the status names th
     fs.rmSync(tmp, { recursive: true, force: true })
   }
 })
+
+test('a run sends from a terminal or when a coding agent runs lore for you; a bare pipe, CI and every opt-out never do', async () => {
+  const { AGENT_MARKERS, gateStats, loadConfig, STATS_OFF } = await import('../src/config.ts')
+  const keys = ['LORE_OFFLINE', ...STATS_OFF, ...AGENT_MARKERS]
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]))
+  const posts: unknown[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    posts.push(JSON.parse(String(init?.body)))
+    return new Response('{"ok":true}', { status: 202 })
+  }) as typeof fetch
+  /** One run, the way cli.ts makes it: env, then config, then the gate, then the send. */
+  const run = async (env: Record<string, string>, isTTY: boolean, overrides = {}) => {
+    for (const k of keys) delete process.env[k]
+    Object.assign(process.env, env)
+    fs.rmSync(process.env.LORE_HOME!, { recursive: true, force: true })
+    const cfg = gateStats(loadConfig({ endpoint: 'https://collector.test', ...overrides }), isTTY, process.env)
+    return (await sendStatsIfDue(report(), cfg)).state
+  }
+  try {
+    assert.equal(await run({}, true), 'sent', 'a terminal')
+    assert.equal(await run({}, false), 'disabled', 'a pipe or a script')
+    assert.equal(await run({ CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', AI_AGENT: 'claude-code_2-1-286_agent' }, false), 'sent', 'Claude Code running it')
+    for (const [k, v] of [['CODEX_THREAD_ID', '019a7c2e-5f1d-7c40-9a8b-3d2e1f0a4b5c'], ['GEMINI_CLI', '1'], ['QWEN_CODE', '1'], ['OPENCODE', '1'], ['AI_AGENT', 'some-agent']])
+      assert.equal(await run({ [k]: v }, false), 'sent', k)
+    assert.equal(await run({ CLAUDECODE: '0' }, false), 'disabled', 'a marker turned off is no marker')
+    assert.equal(await run({ CLAUDECODE: '1', CI: 'true' }, false), 'disabled', 'an agent in CI is still CI')
+    assert.equal(await run({ CURSOR_AGENT: '1', CI: '1' }, false), 'disabled', "Cursor's agent sets CI=1, and CI wins")
+    for (const off of ['DO_NOT_TRACK', 'LORE_NO_STATS', 'DISABLE_TELEMETRY', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'])
+      for (const tty of [true, false]) assert.equal(await run({ CLAUDECODE: '1', [off]: '1' }, tty), 'disabled', `${off}${tty ? ' at a terminal' : ' under Claude Code'}`)
+    assert.equal(await run({ CLAUDECODE: '1' }, false, { stats: false }), 'disabled', '--no-stats')
+    assert.equal(await run({ CLAUDECODE: '1' }, false, { offline: true }), 'disabled', '--offline')
+    assert.equal(posts.length, 7, 'only the terminal and the agent runs sent')
+    assert.equal(gateStats(loadConfig({ endpoint: 'https://collector.test' }), false, {}).statsOff, 'a non-terminal run', 'and a pipe says why')
+  } finally {
+    globalThis.fetch = realFetch
+    for (const [k, v] of Object.entries(saved)) v === undefined ? delete process.env[k] : (process.env[k] = v)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+})

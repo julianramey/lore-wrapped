@@ -36,6 +36,30 @@ export interface LoreConfig {
  */
 export const STATS_OFF = ['LORE_NO_STATS', 'DO_NOT_TRACK', 'DISABLE_TELEMETRY', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'CI']
 
+/**
+ * What coding agents set on the commands they run, checked in their source: Claude Code
+ * (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT, and the generic AI_AGENT), Codex (CODEX_THREAD_ID,
+ * CODEX_CI), Gemini CLI (GEMINI_CLI), Qwen Code (QWEN_CODE), OpenCode and Kilo (OPENCODE),
+ * Cursor (CURSOR_AGENT; its agent also sets CI=1, and CI still wins).
+ */
+export const AGENT_MARKERS = ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'AI_AGENT', 'CODEX_THREAD_ID', 'CODEX_CI', 'GEMINI_CLI', 'QWEN_CODE', 'OPENCODE', 'CURSOR_AGENT']
+
+const set = (env: NodeJS.ProcessEnv, k: string) => !!env[k] && env[k] !== '0' && env[k] !== 'false'
+
+/** The marker of the coding agent running lore for someone, if one is. */
+export const agentRun = (env: NodeJS.ProcessEnv = process.env) => AGENT_MARKERS.find((k) => set(env, k))
+
+/**
+ * Stats go from a run someone chose to make: at a terminal, or through a coding agent they
+ * asked to run lore. A run whose output goes to a file or pipe with no agent behind it is a
+ * script, and sends nothing. Everything that turns stats off (CI, DO_NOT_TRACK, Claude Code's
+ * telemetry switches, --no-stats) was already applied by loadConfig and still wins.
+ */
+export function gateStats(cfg: LoreConfig, isTTY = !!process.stdout.isTTY, env: NodeJS.ProcessEnv = process.env): LoreConfig {
+  if (!cfg.stats || isTTY || agentRun(env)) return cfg
+  return { ...cfg, stats: false, statsOff: 'a non-terminal run' }
+}
+
 export function loadConfig(overrides: Partial<LoreConfig> = {}): LoreConfig {
   let file: Partial<LoreConfig> = {}
   try {
@@ -43,7 +67,7 @@ export function loadConfig(overrides: Partial<LoreConfig> = {}): LoreConfig {
   } catch {
     /* no config yet */
   }
-  const env = (k: string) => !!process.env[k] && process.env[k] !== '0' && process.env[k] !== 'false'
+  const env = (k: string) => set(process.env, k)
   const offline = overrides.offline ?? (env('LORE_OFFLINE') || file.offline === true)
   const signal = STATS_OFF.find(env)
   // a saved `stats: false` (from `lore stats off`, or a "no" to 0.4.0's question) keeps them off
