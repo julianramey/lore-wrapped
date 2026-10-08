@@ -52,7 +52,7 @@ export interface AnonStats {
   weekend_share: number
   model_share: Record<string, number>
   steer_themes: Record<string, number>
-  /** Steer rate on follow-ups to each model family's work (only families with 100+ follow-ups). */
+  /** Steer rate on follow-ups to each model family's work (only families with 100+ follow-ups, at most 24). */
   steer_by_model: Record<string, number>
   /** What opening prompts ask for, as shares of a fixed taxonomy. */
   intents: Record<string, number>
@@ -86,7 +86,7 @@ export interface AnonStats {
   tokens_per_prompt: number
   steers: number
   switches_after_steer: number
-  /** Interrupt rate on follow-ups to each model family's work (100+ follow-ups). */
+  /** Interrupt rate on follow-ups to each model family's work (100+ follow-ups, the same families). */
   interrupt_by_model: Record<string, number>
   // v5: tasks
   test_run_share: number
@@ -147,13 +147,63 @@ export function topShare(own: number, dist: Record<string, number>): number | nu
   return Math.max(0.01, 1 - (below + dist[mine] * within) / runs)
 }
 
-/** Exact, to a sensible precision: whole units, or one decimal for small rates and hours. */
-const int = (x: number) => Math.max(0, Math.round(x || 0))
-const dec = (x: number) => Math.max(0, Math.round((x || 0) * 10) / 10)
-const round05 = (x: number) => Math.round(Math.min(1, Math.max(0, x)) * 20) / 20
+/** Bytes of a payload the collector reads: a real one is about 2 KB, the largest it accepts under 5 KB. */
+export const MAX_BODY = 16 * 1024
+
+// What the collector accepts. buildStats fits every payload to these and validateStats checks
+// them, so a history can cost a field its precision but never the whole send.
+const THEME_KEYS = new Set(STEER_THEMES.map((t) => t.key))
+const SWEAR_KEYS = new Set([...SWEARS.map((s) => s.word), 'none'])
+const TWIN_KEYS = new Set([...TWINS.map((t) => t.key), 'none'])
+const REPLY_KEYS = new Set([...REPLIES, 'none'])
+const INTENT_KEYS = new Set([...INTENTS.map((i) => i.key), 'other'])
+const ARCHETYPE_KEYS = new Set(ARCHETYPES.map((a) => a.key))
+const MODEL_OK = (x: string) => x === 'other' || KNOWN_MODELS.has(x)
+/** Ceilings no real history reaches: anything above is a bug or a forgery. Integers unless listed in DECIMALS. */
+const MAX: Record<string, number> = { tokens: 1e15, tokens_per_prompt: 1e8, api_usd: 1e8, lines_added: 1e10, prompts: 1e8, threads: 1e7, steers: 1e8, agent_hours: 1e6 }
+const ceiling = (k: string) => MAX[k] ?? 1e7
+const DECIMALS = new Set(['agent_hours', 'swear_per_100', 'longest_session_hours', 'actions_per_prompt'])
+/** Keys a map may carry: model shares 12, the other share maps 24, count maps 12 (each count 1 to 9999). */
+const MODEL_KEYS = 12
+const MAP_KEYS = 24
+const COUNT_KEYS_MAX = 12
+const COUNT_MAX = 9999
+const MONTH = /^20\d\d-(0[1-9]|1[0-2])$/
+
+const LANG_OK = new Set(Object.values(LANG_KEYS))
+const MCP_OK = new Set([...MCP_KINDS.map(([k]) => k), 'other'])
+const FW_OK = new Set(FRAMEWORKS.map(([k]) => k))
+const COUNT_KEYS: Record<string, ReadonlySet<string>> = {
+  mcp_kinds: MCP_OK,
+  repo_frameworks: FW_OK,
+  repo_files: new Set(FILE_SIZES),
+  repo_age: new Set(AGES),
+  remote_hosts: new Set(HOSTS),
+  license_families: new Set(LICENSES),
+  team_size: new Set(TEAMS),
+}
+const REPO = new Set<string>(REPO_FIELDS)
+const NUMBER = (k: string, x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= ceiling(k) && (DECIMALS.has(k) ? Math.abs(Math.round(x * 10) - x * 10) < 1e-6 : Number.isInteger(x))
+const SHARE = (x: unknown) => typeof x === 'number' && x >= 0 && x <= 1 && Math.abs(x * 20 - Math.round(x * 20)) < 1e-9
+const ALLOWED = ['schema', 'client', 'sources', ...FIELDS.shares, ...Object.keys(FIELDS.ints), ...FIELDS.numbers, ...FIELDS.enums, ...FIELDS.maps, ...FIELDS.counts]
+
+/** Exact, to a sensible precision: whole units, or one decimal for small rates and hours; never NaN, negative or past a ceiling. */
+const finite = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : 0)
+const int = (x: number, max = Infinity) => Math.min(max, Math.max(0, Math.round(finite(x))))
+const dec = (x: number, max = Infinity) => Math.min(max, Math.max(0, Math.round(finite(x) * 10) / 10))
+const round05 = (x: number) => Math.round(Math.min(1, Math.max(0, finite(x))) * 20) / 20
 /** A share over a small denominator is coarser: under 5, quarters only. */
-const roundShare = (num: number, den: number) => (!den ? 0 : den < 5 ? Math.round(Math.min(1, num / den) * 4) / 4 : round05(num / den))
-const nonzero = (m: Record<string, number>) => Object.fromEntries(Object.entries(m).filter(([, n]) => n > 0))
+const roundShare = (num: number, den: number) => {
+  const d = finite(den)
+  if (d <= 0) return 0
+  const x = Math.min(1, Math.max(0, finite(num) / d))
+  return d < 5 ? Math.round(x * 4) / 4 : round05(x)
+}
+/** Largest first; ties by key, so the same history always sends the same keys. */
+const largest = <T>(value: (x: T) => number) => (a: [string, T], b: [string, T]) => value(b[1]) - value(a[1]) || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)
+/** A count map: keys from its fixed list, counts from 1 (zeros left out) to COUNT_MAX. */
+const counts = (m: Record<string, number> | undefined, ok: ReadonlySet<string>) =>
+  Object.fromEntries(Object.entries(m || {}).filter(([k, n]) => ok.has(k) && finite(n) >= 1).slice(0, COUNT_KEYS_MAX).map(([k, n]) => [k, int(n, COUNT_MAX)]))
 
 /**
  * A model's public name, or "other". Custom deployments and internal endpoints can be named
@@ -169,63 +219,68 @@ export function publicModel(m: string): string {
 export const exampleMachine = (r: Report): Machine => ({ os: 'darwin', firstRunMonth: new Date(r.generatedAt).toISOString().slice(0, 7), runs: 1, notice: NOTICE })
 
 export function buildStats(r: Report, m: Machine = exampleMachine(r)): AnonStats {
-  const months = Math.max(1, Math.round(r.totals.spanDays / 30))
-  const modelShare: Record<string, number> = {}
-  for (const m of r.models) {
-    const fam = publicModel(m.model)
-    modelShare[fam] = (modelShare[fam] || 0) + m.share
-  }
-  for (const k of Object.keys(modelShare)) {
-    modelShare[k] = round05(modelShare[k])
-    if (modelShare[k] < 0.05) delete modelShare[k]
-  }
+  const prompts = finite(r.totals.prompts)
+  const months = Math.max(1, Math.round(finite(r.totals.spanDays) / 30))
+  // dated versions of one model add up first. A long history follows model releases, so it
+  // can have more than 12 families at 5%: the 12 largest are sent.
+  const fams = new Map<string, number>()
+  for (const x of r.models) fams.set(publicModel(x.model), (fams.get(publicModel(x.model)) || 0) + finite(x.share))
+  const modelShare: Record<string, number> = Object.fromEntries(
+    [...fams]
+      .sort(largest((v) => v))
+      .map(([k, v]) => [k, round05(v)] as const)
+      .filter(([, v]) => v >= 0.05)
+      .slice(0, MODEL_KEYS),
+  )
   const themes: Record<string, number> = {}
-  for (const t of r.steering.themes) if (t.share >= 0.05) themes[t.key] = round05(t.share)
-  // dated versions of one model add up, weighted by their follow-ups, before the rate
+  for (const t of r.steering.themes) if (THEME_KEYS.has(t.key) && t.share >= 0.05) themes[t.key] = round05(t.share)
+  // dated versions of one model add up, weighted by their follow-ups, before the rate; the 24
+  // families with the most follow-ups are sent
   const byFam = new Map<string, { followups: number; steers: number; interrupts: number }>()
-  for (const m of r.deep.steeringByModel) {
-    const c = byFam.get(publicModel(m.model)) || { followups: 0, steers: 0, interrupts: 0 }
-    c.followups += m.followups
-    c.steers += m.steers
-    c.interrupts += m.interrupts
-    byFam.set(publicModel(m.model), c)
+  for (const x of r.deep.steeringByModel) {
+    const c = byFam.get(publicModel(x.model)) || { followups: 0, steers: 0, interrupts: 0 }
+    c.followups += finite(x.followups)
+    c.steers += finite(x.steers)
+    c.interrupts += finite(x.interrupts)
+    byFam.set(publicModel(x.model), c)
   }
-  const steerByModel: Record<string, number> = {}
-  const interruptByModel: Record<string, number> = {}
-  for (const [fam, c] of byFam) {
-    if (!c.followups) continue
-    steerByModel[fam] = round05(c.steers / c.followups)
-    interruptByModel[fam] = round05(c.interrupts / c.followups)
-  }
+  const steered = [...byFam].filter(([, c]) => c.followups > 0).sort(largest((c) => c.followups)).slice(0, MAP_KEYS)
+  const steerByModel = Object.fromEntries(steered.map(([fam, c]) => [fam, round05(c.steers / c.followups)]))
+  const interruptByModel = Object.fromEntries(steered.map(([fam, c]) => [fam, round05(c.interrupts / c.followups)]))
   const intents: Record<string, number> = {}
-  for (const i of r.deep.intents) if (i.share >= 0.05) intents[i.key] = round05(i.share)
+  for (const i of r.deep.intents) if (INTENT_KEYS.has(i.key) && i.share >= 0.05) intents[i.key] = round05(i.share)
   const swear: Record<string, number> = {}
-  for (const s of r.deep.swear.bySource) swear[s.source] = Math.min(30, Math.round(s.per100))
-  const per100 = (n: number, max: number) => Math.min(max, Math.round(r.totals.prompts ? (n / r.totals.prompts) * 100 : 0))
+  for (const s of r.deep.swear.bySource) if (isSource(s.source)) swear[s.source] = int(s.per100, 30)
+  const per100 = (n: number, max: number) => int(prompts > 0 ? (finite(n) / prompts) * 100 : 0, max)
   const reply = (r.quotes[0]?.text || '').toLowerCase().replace(/[\s.!?…]+$/g, '').trim()
-  const exact = r.spend.tokens - r.spend.estTokens
+  const word = r.deep.swear.words[0]?.word || 'none'
+  const twin = r.archetype.twin?.key || 'none'
+  const tokens = finite(r.spend.tokens)
+  const exact = tokens - finite(r.spend.estTokens)
   const tk = r.deep.tasks
   const rs = r.repoShape
   // languages as shares of the lines agents wrote, from lore's fixed list
+  const lines = finite(r.deep.work.linesAdded)
   const langs: Record<string, number> = {}
-  for (const l of r.deep.work.languages) {
-    const share = round05(r.deep.work.linesAdded ? l.lines / r.deep.work.linesAdded : 0)
-    if (share >= 0.05 && LANG_KEYS[l.lang]) langs[LANG_KEYS[l.lang]] = share
+  for (const l of [...r.deep.work.languages].sort((a, b) => finite(b.lines) - finite(a.lines))) {
+    const share = round05(lines ? finite(l.lines) / lines : 0)
+    const key = Object.hasOwn(LANG_KEYS, l.lang) ? LANG_KEYS[l.lang] : null
+    if (share >= 0.05 && key && Object.keys(langs).length < MAP_KEYS) langs[key] = share
   }
 
-  return {
+  const out: AnonStats = {
     schema: STATS_SCHEMA,
     client: VERSION,
-    sources: r.bySource.filter((s) => s.threads > 0).map((s) => s.source),
+    sources: [...new Set(r.bySource.filter((s) => s.threads > 0).map((s) => s.source))].filter(isSource),
     history_months: int(months),
     threads: int(r.totals.threads),
-    prompts: int(r.totals.prompts),
+    prompts: int(prompts),
     active_days: int(r.totals.activeDays),
     projects: int(r.totals.projects),
     median_prompt_words: int(r.style.medianWords),
     steer_rate: round05(r.steering.rate),
     approval_rate: round05(r.steering.approvalsShare),
-    interrupts_per_100: Math.min(50, Math.round(r.steering.interruptsPer100)),
+    interrupts_per_100: int(r.steering.interruptsPer100, 50),
     night_share: round05(r.rhythm.nightShare),
     weekend_share: round05(r.rhythm.weekendShare),
     model_share: modelShare,
@@ -235,7 +290,7 @@ export function buildStats(r: Report, m: Machine = exampleMachine(r)): AnonStats
     archetype: r.archetype.key,
     type_code: r.archetype.code,
     agent_hours: dec(r.deep.work.agentHours),
-    lines_added: int(r.deep.work.linesAdded),
+    lines_added: int(lines),
     high_effort_share: round05(r.deep.effort.highShare),
     swear_per_100_by_tool: swear,
     median_seconds_to_steer: int(r.deep.timeToSteer.medianSec),
@@ -244,17 +299,18 @@ export function buildStats(r: Report, m: Machine = exampleMachine(r)): AnonStats
     please_per_100: per100(r.deep.manners.please, 100),
     thanks_per_100: per100(r.deep.manners.thanks, 100),
     caps_per_100: per100(r.deep.swear.allCaps, 50),
-    top_swear: r.deep.swear.words[0]?.word || 'none',
-    twin: r.archetype.twin?.key || 'none',
+    top_swear: SWEAR_KEYS.has(word) ? word : 'none',
+    twin: TWIN_KEYS.has(twin) ? twin : 'none',
     top_reply: REPLIES.includes(reply) ? reply : 'none',
-    longest_session_hours: dec((r.records.longestSession?.minutes || 0) / 60),
+    longest_session_hours: dec(finite(r.records.longestSession?.minutes) / 60),
     streak_days: int(r.streak.days),
-    tokens: int(r.spend.tokens),
-    subagent_token_share: round05(exact > 0 ? r.spend.subagentTokens / exact : 0),
-    agent_seconds_per_prompt: int(r.deep.work.agentMinutesPerPrompt * 60),
+    tokens: int(tokens),
+    subagent_token_share: round05(exact > 0 ? finite(r.spend.subagentTokens) / exact : 0),
+    agent_seconds_per_prompt: int(finite(r.deep.work.agentMinutesPerPrompt) * 60),
     actions_per_prompt: dec(r.deep.work.actionsPerPrompt),
     cache_share: round05(r.spend.cacheShare),
-    tokens_per_prompt: int(r.totals.prompts ? r.spend.tokens / r.totals.prompts : 0),
+    // past its ceiling only when automated runs (SDK, exec) dwarf the prompts typed by hand
+    tokens_per_prompt: int(prompts > 0 ? tokens / prompts : 0),
     steers: int(r.totals.steers),
     switches_after_steer: int(r.deep.crossTool.switches),
     interrupt_by_model: interruptByModel,
@@ -263,9 +319,9 @@ export function buildStats(r: Report, m: Machine = exampleMachine(r)): AnonStats
     long_threads: int(tk.long),
     spec_prompt_share: roundShare(tk.specOpenings, tk.openings),
     edit_langs: langs,
-    mcp_kinds: Object.fromEntries(tk.mcpKinds.map((k) => [k, 1])),
-    os: m.os,
-    first_run_month: m.firstRunMonth,
+    mcp_kinds: counts(Object.fromEntries(tk.mcpKinds.map((k) => [k, 1])), MCP_OK),
+    os: OSES.includes(m.os) ? m.os : 'linux',
+    first_run_month: MONTH.test(m.firstRunMonth) ? m.firstRunMonth : new Date().toISOString().slice(0, 7),
     lore_runs: int(m.runs),
     notice: m.notice,
     ...(rs
@@ -275,57 +331,33 @@ export function buildStats(r: Report, m: Machine = exampleMachine(r)): AnonStats
           repos_ci: int(rs.ci),
           repos_container: int(rs.container),
           agent_md: int(rs.agentMd),
-          repo_frameworks: Object.fromEntries(rs.frameworks.slice(0, 8).map((k) => [k, 1])),
-          repo_files: nonzero(rs.files),
-          repo_age: nonzero(rs.age),
-          remote_hosts: nonzero(rs.hosts),
-          license_families: nonzero(rs.licenses),
-          team_size: nonzero(rs.team),
+          repo_frameworks: counts(Object.fromEntries(rs.frameworks.filter((k) => FW_OK.has(k)).slice(0, 8).map((k) => [k, 1])), FW_OK),
+          repo_files: counts(rs.files, COUNT_KEYS.repo_files),
+          repo_age: counts(rs.age, COUNT_KEYS.repo_age),
+          remote_hosts: counts(rs.hosts, COUNT_KEYS.remote_hosts),
+          license_families: counts(rs.licenses, COUNT_KEYS.license_families),
+          team_size: counts(rs.team, COUNT_KEYS.team_size),
           kept_rate: roundShare(rs.outcomes.committed, rs.outcomes.checked),
           revert_rate: roundShare(rs.outcomes.reverted, rs.outcomes.committed),
         }
       : {}),
   }
+  // every number to its ceiling, the one place they're all listed
+  const o = out as unknown as Record<string, number>
+  for (const k of FIELDS.numbers) if (k in o) o[k] = DECIMALS.has(k) ? dec(o[k], ceiling(k)) : int(o[k], ceiling(k))
+  for (const [k, max] of Object.entries(FIELDS.ints)) o[k] = int(o[k], max)
+  return out
 }
-
-
-const THEME_KEYS = new Set(STEER_THEMES.map((t) => t.key))
-const SWEAR_KEYS = new Set([...SWEARS.map((s) => s.word), 'none'])
-const TWIN_KEYS = new Set([...TWINS.map((t) => t.key), 'none'])
-const REPLY_KEYS = new Set([...REPLIES, 'none'])
-const INTENT_KEYS = new Set([...INTENTS.map((i) => i.key), 'other'])
-const ARCHETYPE_KEYS = new Set(ARCHETYPES.map((a) => a.key))
-const MODEL_OK = (x: string) => x === 'other' || KNOWN_MODELS.has(x)
-/** Ceilings no real history reaches: anything above is a bug or a forgery. Integers unless listed in DECIMALS. */
-const MAX: Record<string, number> = { tokens: 1e15, tokens_per_prompt: 1e8, api_usd: 1e8, lines_added: 1e10, prompts: 1e8, threads: 1e7, steers: 1e8, agent_hours: 1e6 }
-const DECIMALS = new Set(['agent_hours', 'swear_per_100', 'longest_session_hours', 'actions_per_prompt'])
-const NUMBER = (k: string, x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= (MAX[k] ?? 1e7) && (DECIMALS.has(k) ? Math.abs(Math.round(x * 10) - x * 10) < 1e-6 : Number.isInteger(x))
-const SHARE = (x: unknown) => typeof x === 'number' && x >= 0 && x <= 1 && Math.abs(x * 20 - Math.round(x * 20)) < 1e-9
-
-const LANG_OK = new Set(Object.values(LANG_KEYS))
-const MCP_OK = new Set([...MCP_KINDS.map(([k]) => k), 'other'])
-const FW_OK = new Set(FRAMEWORKS.map(([k]) => k))
-const COUNT_KEYS: Record<string, ReadonlySet<string>> = {
-  mcp_kinds: MCP_OK,
-  repo_frameworks: FW_OK,
-  repo_files: new Set(FILE_SIZES),
-  repo_age: new Set(AGES),
-  remote_hosts: new Set(HOSTS),
-  license_families: new Set(LICENSES),
-  team_size: new Set(TEAMS),
-}
-const REPO = new Set<string>(REPO_FIELDS)
 
 /** Shared by client tests and the collector: returns a list of problems, empty when valid. */
 export function validateStats(o: any): string[] {
   const errs: string[] = []
-  const allowed = ['schema', 'client', 'sources', ...FIELDS.shares, ...Object.keys(FIELDS.ints), ...FIELDS.numbers, ...FIELDS.enums, ...FIELDS.maps, ...FIELDS.counts]
   if (!o || typeof o !== 'object' || Array.isArray(o)) return ['not an object']
   // repo stats come all together or not at all
   const withRepo = REPO_FIELDS.some((k) => k in o)
   const present = (k: string) => !REPO.has(k) || withRepo
-  for (const k of Object.keys(o)) if (!allowed.includes(k)) errs.push(`unexpected field ${k}`)
-  for (const k of allowed) if (present(k) && !(k in o)) errs.push(`missing ${k}`)
+  for (const k of Object.keys(o)) if (!ALLOWED.includes(k)) errs.push(`unexpected field ${k}`)
+  for (const k of ALLOWED) if (present(k) && !(k in o)) errs.push(`missing ${k}`)
   if (o.schema !== STATS_SCHEMA) errs.push('bad schema')
   if (typeof o.client !== 'string' || !/^\d+\.\d+\.\d+$/.test(o.client)) errs.push('bad client')
   if (!Array.isArray(o.sources) || o.sources.some((s: unknown) => !isSource(s))) errs.push('bad sources')
@@ -333,15 +365,15 @@ export function validateStats(o: any): string[] {
   for (const k of FIELDS.shares) if (present(k) && !SHARE(o[k])) errs.push(`bad ${k}`)
   if (!OSES.includes(o.os)) errs.push('bad os')
   if (o.notice !== NOTICE) errs.push('bad notice')
-  if (typeof o.first_run_month !== 'string' || !/^20\d\d-(0[1-9]|1[0-2])$/.test(o.first_run_month)) errs.push('bad first_run_month')
+  if (typeof o.first_run_month !== 'string' || !MONTH.test(o.first_run_month)) errs.push('bad first_run_month')
   for (const k of FIELDS.counts) {
     if (!present(k)) continue
     const m = o[k]
-    if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).length > 12) {
+    if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).length > COUNT_KEYS_MAX) {
       errs.push(`bad ${k}`)
       continue
     }
-    for (const [kk, v] of Object.entries(m)) if (!COUNT_KEYS[k].has(kk) || !Number.isInteger(v) || (v as number) < 1 || (v as number) > 9999) errs.push(`bad ${k}.${kk}`)
+    for (const [kk, v] of Object.entries(m)) if (!COUNT_KEYS[k].has(kk) || !Number.isInteger(v) || (v as number) < 1 || (v as number) > COUNT_MAX) errs.push(`bad ${k}.${kk}`)
   }
   for (const [k, max] of Object.entries(FIELDS.ints)) if (!Number.isInteger(o[k]) || o[k] < 0 || o[k] > max) errs.push(`bad ${k}`)
   if (!ARCHETYPE_KEYS.has(o.archetype)) errs.push('bad archetype')
@@ -349,7 +381,7 @@ export function validateStats(o: any): string[] {
   if (!TWIN_KEYS.has(o.twin)) errs.push('bad twin')
   if (!REPLY_KEYS.has(o.top_reply)) errs.push('bad top_reply')
   if (typeof o.type_code !== 'string' || !/^[DE][SA][LN][FC]$/.test(o.type_code)) errs.push('bad type_code')
-  const shareMap = (k: string, keyOk: (x: string) => boolean, max = 24) => {
+  const shareMap = (k: string, keyOk: (x: string) => boolean, max = MAP_KEYS) => {
     const m = o[k]
     if (!m || typeof m !== 'object' || Array.isArray(m) || Object.keys(m).length > max) return errs.push(`bad ${k}`)
     for (const [kk, v] of Object.entries(m)) if (!keyOk(kk) || !SHARE(v)) errs.push(`bad ${k}.${kk}`)
@@ -362,10 +394,23 @@ export function validateStats(o: any): string[] {
   if (!sw || typeof sw !== 'object') errs.push('bad swear_per_100_by_tool')
   else for (const [kk, v] of Object.entries(sw)) if (!isSource(kk) || !Number.isInteger(v) || (v as number) < 0 || (v as number) > 30) errs.push(`bad swear_per_100_by_tool.${kk}`)
   const ms = o.model_share
-  if (!ms || typeof ms !== 'object' || Object.keys(ms).length > 12) errs.push('bad model_share')
+  if (!ms || typeof ms !== 'object' || Object.keys(ms).length > MODEL_KEYS) errs.push('bad model_share')
   else for (const [k, v] of Object.entries(ms)) if (!MODEL_OK(k) || !SHARE(v)) errs.push(`bad model_share.${k}`)
   const st = o.steer_themes
   if (!st || typeof st !== 'object') errs.push('bad steer_themes')
   else for (const [k, v] of Object.entries(st)) if (!THEME_KEYS.has(k) || !SHARE(v)) errs.push(`bad steer_themes.${k}`)
   return errs
+}
+
+/**
+ * A refused payload's first problem, as a field name and nothing else: what the collector
+ * counts, so a client bug shows up without logs. A map's keys and an unexpected field's name
+ * are the sender's words, so they're never kept.
+ */
+export function rejectReason(errs: string[]): string {
+  const e = errs[0] || ''
+  if (e === 'not an object' || e === 'bad json' || e === 'too large') return e
+  if (e.startsWith('unexpected field ')) return 'unexpected field'
+  const m = e.match(/^(bad|missing) ([a-z0-9_]+)/)
+  return m && ALLOWED.includes(m[2]) ? `${m[1]} ${m[2]}` : 'other'
 }

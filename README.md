@@ -59,7 +59,7 @@ To read the code first: `git clone https://github.com/julianramey/lore-wrapped &
 
 **Why the counts:** they rank you (the report downloads the public index and compares on your machine) and build the public lore index. No account or install id, no IP kept, and raw rows are never published or sold.
 
-**The server:** you can't inspect a server from your machine, so its code is public. [`collector/`](collector) is exactly what runs at `api.lore-wrapped.com`, a Cloudflare Worker of about 240 lines (`src/index.ts`). It stores each payload with the month it arrived (raw rows kept 13 months) and counters. Every 10 minutes it rebuilds the index from the counters, published only from 25+ runs, with a new snapshot only after 25+ new runs. No IPs or user agents are stored, and no raw row is ever published or sold. Tests are in `collector/test`.
+**The server:** you can't inspect a server from your machine, so its code is public. [`collector/`](collector) is exactly what runs at `api.lore-wrapped.com`, a Cloudflare Worker of about 250 lines (`src/index.ts`). It stores each payload with the month it arrived (raw rows kept 13 months) and counters. Every 10 minutes it rebuilds the index from the counters, published only from 25+ runs, with a new snapshot only after 25+ new runs. A refused payload isn't kept: it only adds one to a count of refusals by month and the first field that failed. No IPs or user agents are stored, and no raw row is ever published or sold. Tests are in `collector/test`.
 
 **Turn it off:**
 

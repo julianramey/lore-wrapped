@@ -6,7 +6,7 @@ import { VERSION, readState, writeState, type LoreConfig } from '../config.ts'
 import { isWsl } from '../util/platform.ts'
 import type { Report } from '../report-types.ts'
 import { monthKey } from '../util/text.ts'
-import { buildStats, NOTICE, validateStats, type AnonStats, type Machine } from './stats.ts'
+import { buildStats, MAX_BODY, NOTICE, validateStats, type AnonStats, type Machine } from './stats.ts'
 
 export interface StatsStatus {
   enabled: boolean
@@ -16,6 +16,8 @@ export interface StatsStatus {
   payload: AnonStats
   state: 'sent' | 'already-sent' | 'disabled' | 'no-endpoint' | 'failed' | 'pending'
   detail: string
+  /** Why a send failed, in a few words: a field that failed validation, or the network. */
+  why?: string
   lastSentMonth: string | null
 }
 
@@ -33,15 +35,15 @@ async function post(url: string, body: unknown): Promise<any> {
   } catch {
     /* non-JSON error page */
   }
-  if (!res.ok) throw new Error(json?.error ? `${res.status}: ${[].concat(json.error).join(', ')}` : `HTTP ${res.status}`)
+  if (!res.ok) throw Object.assign(new Error(`the collector answered ${res.status}${json?.error ? `: ${[].concat(json.error).join(', ')}` : ''}`), { answered: true })
   return json
 }
 
 /** Counts this run in lore's state file: the first-run month and the lifetime count feed the payload. */
 export function countRun(now = Date.now()) {
   const st = readState()
-  const earliest = Math.min(now, st.statsNoticeAt || now, ...(Array.isArray(st.runs) ? st.runs.map((r: any) => r.at || now) : []))
-  writeState({ runCount: (st.runCount ?? (Array.isArray(st.runs) ? st.runs.length : 0)) + 1, firstRunMonth: st.firstRunMonth || monthKey(earliest) })
+  const times = [now, st.statsNoticeAt, ...(Array.isArray(st.runs) ? st.runs.map((r: any) => r?.at) : [])].filter((t) => Number.isFinite(t) && t > 0)
+  writeState({ runCount: (st.runCount ?? (Array.isArray(st.runs) ? st.runs.length : 0)) + 1, firstRunMonth: st.firstRunMonth || monthKey(Math.min(...times)) })
 }
 
 /** This machine's facts for the payload: its OS family, and lore's own run history here. */
@@ -61,21 +63,28 @@ export function statsStatus(report: Report, cfg: LoreConfig): StatsStatus {
   return { ...base, state: 'pending', detail: 'Not sent yet this month.' }
 }
 
+/** The fields named in validation problems ("bad model_share.x" → "model_share"), never their values. */
+const fieldsOf = (errs: string[]) => [...new Set(errs.map((e) => e.match(/^(?:bad|missing|unexpected field) ([^.\s]+)/)?.[1] ?? e))]
+const notSent = (st: StatsStatus, why: string): StatsStatus => ({ ...st, state: 'failed', why, detail: `Not sent (${why}).` })
+
 /**
  * Sends at most once per calendar month, so repeat runs don't inflate counts without needing
- * an id. The first run sends too, and the run that sends says so.
+ * an id. The first run sends too, and the run that sends says so. A payload the collector
+ * would refuse isn't sent at all, and the status names the field, so it's seen, not a silent 400.
  */
 export async function sendStatsIfDue(report: Report, cfg: LoreConfig, force = false): Promise<StatsStatus> {
   const st = statsStatus(report, cfg)
   if (st.state !== 'pending' && !(force && st.state === 'already-sent')) return st
   const errs = validateStats(st.payload)
-  if (errs.length) return { ...st, state: 'failed', detail: `Refused to send invalid stats: ${errs.join(', ')}` }
+  if (errs.length) return notSent(st, `a field failed validation: ${fieldsOf(errs).join(', ')}`)
+  const bytes = new TextEncoder().encode(JSON.stringify(st.payload)).byteLength
+  if (bytes > MAX_BODY) return notSent(st, `${bytes} bytes, over the collector's ${MAX_BODY}`)
   try {
     await post(`${cfg.endpoint}/v1/stats`, st.payload)
     const month = monthKey(Date.now())
     writeState({ statsSentMonth: month })
     return { ...st, state: 'sent', detail: `Sent to ${cfg.endpoint}.`, lastSentMonth: month }
   } catch (e: any) {
-    return { ...st, state: 'failed', detail: `Could not reach the collector: ${e?.message || e}` }
+    return notSent(st, e?.answered ? e.message : `could not reach the collector: ${e?.message || e}`)
   }
 }

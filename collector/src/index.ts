@@ -8,14 +8,15 @@
 //
 // No IP is stored: the rate limiter reads it at the edge and lore keeps nothing of it. Rows
 // keep the month they arrived, not the time. Raw rows go to R2 for 13 months; the index
-// itself comes from counters, so it never reads rows back.
+// itself comes from counters, so it never reads rows back. A refused payload isn't kept:
+// it only adds one to a count of refusals by month and the first field that failed.
 //
 // Sized for the Workers free plan: one D1 statement per month per queue batch (50 queries
 // an invocation), point lookups for the cron (no table scans), and the index's KV keys
 // written only when the index changes.
 
 import { aggregateCounts, countRow } from '../../src/pipeline/indexAgg.ts'
-import { RANKED, STATS_SCHEMA, validateStats } from '../../src/pipeline/stats.ts'
+import { MAX_BODY, RANKED, rejectReason, STATS_SCHEMA, validateStats } from '../../src/pipeline/stats.ts'
 
 interface Env {
   DB: D1Database
@@ -29,8 +30,6 @@ interface Env {
 const K = 25
 /** Months raw rows are kept, and so the months the cron looks at. */
 const WINDOW = 13
-/** Bytes, not characters: a stats payload is about 2 KB. */
-const MAX_BODY = 16 * 1024
 /** Bytes of [key, n] JSON per counters statement: half D1's 2 MB cap on a value, several times a full batch. */
 const MAX_JSON = 1_000_000
 const month = () => new Date().toISOString().slice(0, 7)
@@ -68,6 +67,14 @@ async function body(req: Request): Promise<any> {
   }
 }
 
+/**
+ * One more refusal of this kind this month, after the reply: a field name (rejectReason), never
+ * the payload or the request. A failed write (the table not made yet) changes nothing.
+ */
+const REJECT = 'INSERT INTO rejects (month, reason, n) VALUES (?1, ?2, 1) ON CONFLICT(month, reason) DO UPDATE SET n = n + 1'
+const reject = (env: Env, ctx: ExecutionContext, reason: string) =>
+  ctx.waitUntil(env.DB.prepare(REJECT).bind(month(), reason).run().catch(() => {}))
+
 /** One request per IP every few seconds is plenty for one payload per run; the IP isn't kept. */
 async function limited(req: Request, env: Env) {
   const ip = req.headers.get('cf-connecting-ip') || 'unknown'
@@ -95,9 +102,15 @@ export default {
 
       if (req.method === 'POST' && url.pathname === '/v1/stats') {
         if (await limited(req, env)) return json({ error: 'slow down' }, 429)
-        const stats = await body(req)
+        const stats = await body(req).catch((e) => {
+          if (e?.status) reject(env, ctx, rejectReason([e.message]))
+          throw e
+        })
         const errs = validateStats(stats)
-        if (errs.length) return json({ error: errs }, 400)
+        if (errs.length) {
+          reject(env, ctx, rejectReason(errs))
+          return json({ error: errs }, 400)
+        }
         await env.STATS.send({ month: month(), stats })
         return json({ ok: true }, 202)
       }

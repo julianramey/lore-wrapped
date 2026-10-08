@@ -162,7 +162,7 @@ async function main() {
     'already-sent': `already sent this month`,
     disabled: `anonymous aggregate stats off ${dim(`(${cfg.statsOff || 'your config'})`)}`,
     'no-endpoint': `anonymous aggregate stats not sent ${dim('— no collector configured')}`,
-    failed: `anonymous aggregate stats not sent ${dim(`— ${stats.detail}`)}`,
+    failed: `not sent ${dim(`(${stats.why || stats.detail})`)}`,
     pending: `anonymous aggregate stats pending`,
   }
   if (cfg.offline) console.log(`  ${dim('Offline')}  nothing leaves this machine: no stats, no index, no uploads, no model calls`)

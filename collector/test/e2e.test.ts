@@ -458,8 +458,14 @@ test('c: under 25 runs nothing is published, and thin slices never leak once it 
   assert.equal(index(e3).published, true)
 })
 
-test('d: invalid payloads are refused with 400 or 413, and nothing is queued', async () => {
+test('d: invalid payloads are refused with 400 or 413, nothing is queued, and each refusal is only counted', async () => {
   const e = makeEnv()
+  let refused = 0
+  const post = async (...a: Parameters<typeof call>) => {
+    const res = await call(...a)
+    if (res.status === 400 || res.status === 413) refused++
+    return res
+  }
   const good = payload({ repo: true })
   const without = (k: string) => Object.fromEntries(Object.entries(good).filter(([kk]) => kk !== k))
   const cases: [string, unknown, RegExp][] = [
@@ -481,7 +487,7 @@ test('d: invalid payloads are refused with 400 or 413, and nothing is queued', a
     ['a prototype key', JSON.parse(JSON.stringify(good).replace('{', '{"__proto__":{"x":1},')), /unexpected field __proto__/],
   ]
   for (const [what, body, why] of cases) {
-    const res = await call(e, '/v1/stats', { raw: JSON.stringify(body) })
+    const res = await post(e, '/v1/stats', { raw: JSON.stringify(body) })
     assert.equal(res.status, 400, what)
     const { error } = (await res.json()) as any
     assert.ok(error.some((x: string) => why.test(x)), `${what}: ${error}`)
@@ -490,35 +496,67 @@ test('d: invalid payloads are refused with 400 or 413, and nothing is queued', a
     ['bad JSON', '{"schema": "lore.stats.v5",'],
     ['an empty body', ''],
   ]) {
-    const res = await call(e, '/v1/stats', { raw })
+    const res = await post(e, '/v1/stats', { raw })
     assert.equal(res.status, 400, what)
     assert.deepEqual(await res.json(), { error: 'bad json' })
   }
-  const huge = await call(e, '/v1/stats', { raw: JSON.stringify({ ...good, pad: 'x'.repeat(16 * 1024) }) })
+  const huge = await post(e, '/v1/stats', { raw: JSON.stringify({ ...good, pad: 'x'.repeat(16 * 1024) }) })
   assert.equal(huge.status, 413)
   assert.deepEqual(await huge.json(), { error: 'too large' })
   // 16 KB is bytes, not characters: 6,000 "€" are 6,000 characters and 18,000 bytes
   const euros = JSON.stringify({ ...good, pad: '€'.repeat(6000) })
   assert.ok(euros.length < 16 * 1024 && Buffer.byteLength(euros) > 16 * 1024)
-  const multi = await call(e, '/v1/stats', { raw: euros })
+  const multi = await post(e, '/v1/stats', { raw: euros })
   assert.equal(multi.status, 413)
   assert.deepEqual(await multi.json(), { error: 'too large' })
   // a body that says it's too large is refused before it's read
-  const declared = await call(e, '/v1/stats', { raw: JSON.stringify(good), headers: { 'content-length': String(1 << 20) } })
+  const declared = await post(e, '/v1/stats', { raw: JSON.stringify(good), headers: { 'content-length': String(1 << 20) } })
   assert.equal(declared.status, 413)
   // and one just under the limit, in bytes, is read (then refused for its extra field)
   const under = JSON.stringify({ ...good, pad: '€'.repeat(Math.floor((16 * 1024 - Buffer.byteLength(JSON.stringify({ ...good, pad: '' }))) / 3)) })
   assert.ok(Buffer.byteLength(under) <= 16 * 1024)
-  assert.equal((await call(e, '/v1/stats', { raw: under })).status, 400)
-  assert.equal((await call(e, '/v1/stats', { method: 'GET' })).status, 404)
-  assert.equal((await call(e, '/v1/stats', { method: 'PUT', raw: JSON.stringify(good) })).status, 404)
+  assert.equal((await post(e, '/v1/stats', { raw: under })).status, 400)
+  assert.equal((await post(e, '/v1/stats', { method: 'GET' })).status, 404)
+  assert.equal((await post(e, '/v1/stats', { method: 'PUT', raw: JSON.stringify(good) })).status, 404)
 
   // the limiter: the 11th post in a minute from one address is turned away before it's read
   const ip = '203.0.113.7'
-  for (let i = 0; i < 10; i++) assert.equal((await call(e, '/v1/stats', { raw: '{', ip })).status, 400)
-  assert.equal((await call(e, '/v1/stats', { body: good, ip })).status, 429)
+  for (let i = 0; i < 10; i++) assert.equal((await post(e, '/v1/stats', { raw: '{', ip })).status, 400)
+  assert.equal((await post(e, '/v1/stats', { body: good, ip })).status, 429)
   assert.equal(e.sent.length, 0, 'nothing invalid or limited was queued')
-  assert.equal(e.d1.log.statements, 0, 'and nothing touched D1')
+  assert.deepEqual(dbCounts(e, THIS_MONTH), {}, 'and no counter moved')
+  // a refusal adds one to a count by month and its first field, and that's all that's kept
+  const rejects = e.d1.db.prepare('SELECT month, reason, n FROM rejects ORDER BY reason').all() as any[]
+  assert.equal(rejects.reduce((a, r) => a + r.n, 0), refused, 'every refusal counted once, the limited one not at all')
+  assert.ok(rejects.every((r) => r.month === THIS_MONTH))
+  const reasons = rejects.map((r) => r.reason)
+  for (const r of ['unexpected field', 'bad schema', 'missing prompts', 'bad prompts', 'bad tokens', 'bad model_share', 'missing repos', 'not an object', 'bad json', 'too large']) assert.ok(reasons.includes(r), `${r} in ${reasons}`)
+  assert.deepEqual(reasons.filter((r) => !/^(bad|missing) [a-z0-9_]+$|^(unexpected field|not an object|bad json|too large)$/.test(r)), [], 'a field name, never a value, a key or a name the sender made up')
+  assert.equal(rejects.find((r) => r.reason === 'bad json').n, 12)
+})
+
+test('d2: refusals are counted by field name only, and a database without the table still refuses the same way', async () => {
+  const e = makeEnv()
+  const good = payload()
+  const tooMany = Object.fromEntries(['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-6', 'claude-opus-4-5', 'claude-sonnet-4-5', 'claude-sonnet-4', 'claude-opus-4-1', 'gpt-5', 'gpt-5-codex', 'gpt-5.1-codex', 'gpt-5.2-codex', 'gpt-5.3-codex', 'gpt-5.5'].map((m) => [m, 0.05]))
+  for (const body of [
+    { ...good, model_share: tooMany },
+    { ...good, model_share: { 'acme-internal-7b': 0.5 } },
+    { ...good, 'jane@acme.com': 1 },
+    { ...good, tokens_per_prompt: 641916326 },
+  ])
+    assert.equal((await call(e, '/v1/stats', { body })).status, 400)
+  const rows = e.d1.db.prepare('SELECT reason, n FROM rejects ORDER BY reason').all() as any[]
+  assert.deepEqual(rows.map((r) => [r.reason, r.n]), [['bad model_share', 2], ['bad tokens_per_prompt', 1], ['unexpected field', 1]])
+
+  // the deployed database before `wrangler d1 execute … --file schema.sql`: no rejects table
+  const old = makeEnv()
+  old.d1.db.exec('DROP TABLE rejects')
+  const res = await call(old, '/v1/stats', { body: { ...good, prompts: -1 } })
+  assert.equal(res.status, 400)
+  assert.deepEqual(await res.json(), { error: ['bad prompts'] })
+  assert.equal((await call(old, '/v1/stats', { raw: '{' })).status, 400)
+  assert.equal((await call(old, '/v1/stats', { body: good })).status, 202)
 })
 
 test('e: the waitlist adds, dedupes, removes and refuses bad emails, with CORS; nothing reads a team flag', async () => {

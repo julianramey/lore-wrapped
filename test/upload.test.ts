@@ -72,3 +72,32 @@ test('with nothing saved stats are on, wherever the clock is; a saved no (stats 
     fs.rmSync(tmp, { recursive: true, force: true })
   }
 })
+
+test('a payload the collector would refuse is never sent and the status names the field; a refusal says what the collector said', async () => {
+  const posts: unknown[] = []
+  const realFetch = globalThis.fetch
+  let reply = () => new Response('{"ok":true}', { status: 202 })
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    posts.push(JSON.parse(String(init?.body)))
+    return reply()
+  }) as typeof fetch
+  try {
+    fs.rmSync(process.env.LORE_HOME!, { recursive: true, force: true })
+    const cfg = { endpoint: 'https://collector.test', stats: true, ai: false, offline: false } as any
+    const r = report()
+    const st = await sendStatsIfDue({ ...r, archetype: { ...r.archetype, key: 'not-a-card' } }, cfg)
+    assert.equal(st.state, 'failed')
+    assert.equal(st.why, 'a field failed validation: archetype')
+    assert.equal(st.detail, 'Not sent (a field failed validation: archetype).')
+    assert.equal(posts.length, 0, 'nothing left the machine')
+
+    reply = () => new Response(JSON.stringify({ error: ['bad model_share'] }), { status: 400 })
+    const refused = await sendStatsIfDue(r, cfg)
+    assert.deepEqual([refused.state, refused.why], ['failed', 'the collector answered 400: bad model_share'])
+    assert.equal((await sendStatsIfDue(r, cfg)).state, 'failed', 'a refusal is not marked sent: the next run tries again')
+    assert.equal(posts.length, 2)
+  } finally {
+    globalThis.fetch = realFetch
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+})

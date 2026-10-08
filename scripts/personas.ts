@@ -15,7 +15,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { buildStats, validateStats } from '../src/pipeline/stats.ts'
+import { buildStats, MAX_BODY, NOTICE, OSES, validateStats } from '../src/pipeline/stats.ts'
 
 // ───────────────────────── randomness, seeded per persona
 
@@ -154,6 +154,8 @@ export const PERSONAS: Persona[] = [
   { ...base, key: 'gemini', label: 'Gemini CLI only, three months', claude: 0, codex: 0, mix: { gemini: 1 }, days: 90 },
   { ...base, key: 'opencode', label: 'OpenCode with Claude and GPT through one CLI', claude: 0, codex: 0, mix: { opencode: 1 }, days: 100, steer: 0.14 },
   { ...base, key: 'five-tools', label: 'Claude, Codex, Copilot, Pi and Qwen side by side', claude: 0.35, codex: 0.25, mix: { copilot: 0.15, pi: 0.15, qwen: 0.1 }, projects: 5 },
+  { ...base, key: 'model-hopper', label: 'Claude on every new model for a year and a half', claude: 1, codex: 0, days: 540, active: 0.4, perDay: 15, claudeModels: ['claude-3-5-sonnet-20241022', 'claude-3-7-sonnet-20250219', 'claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-opus-4-1-20250805', 'claude-sonnet-4-5-20250929', 'claude-opus-4-5-20251101', 'claude-haiku-4-5-20251001', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-opus-5', 'claude-sonnet-5', 'claude-opus-5-5'] },
+  { ...base, key: 'auto-heavy', label: 'SDK and exec jobs every day, a dozen prompts by hand', automated: 0.995, perDay: 30, days: 90, active: 0.9, agentMin: 6, tools: 30 },
   { ...base, key: 'older-models', label: 'Claude on Sonnet 4.5 and Opus 4.1, last year', claude: 1, codex: 0, days: 200, claudeModels: ['claude-sonnet-4-5-20250929', 'claude-opus-4-1-20250805', 'claude-sonnet-4-5-20250929'] },
 ]
 
@@ -674,9 +676,16 @@ function judge(p: Persona, threads: Thread[], report: any, ms: number): Verdict 
   if (swears > 20 && Math.abs(gotSwears - swears) / swears > 0.25) issues.push(`swears: wrote ${swears}, lore counted ${gotSwears}`)
   const other = report.deep?.intents?.find((i: any) => i.key === 'other')?.share ?? 0
   if (other > 0.4) issues.push(`${Math.round(other * 100)}% of opening asks unclassified`)
+  // the payload this run would send, from every OS, with repo stats off and on, as the collector sees it
   let statsErrs: string[] = []
+  const repo = { repos: 0, tests: 0, ci: 0, container: 0, agentMd: 0, frameworks: [], files: {}, age: {}, hosts: {}, licenses: {}, team: {}, outcomes: { checked: 0, committed: 0, reverted: 0 } }
   try {
-    statsErrs = validateStats(buildStats(report))
+    for (const os of OSES)
+      for (const repoShape of [undefined, repo]) {
+        const wire = JSON.stringify(buildStats({ ...report, repoShape }, { os, firstRunMonth: new Date().toISOString().slice(0, 7), runs: 1, notice: NOTICE }))
+        statsErrs.push(...validateStats(JSON.parse(wire)).map((e) => `${e} (${os})`))
+        if (Buffer.byteLength(wire) > MAX_BODY) statsErrs.push(`${Buffer.byteLength(wire)} bytes (${os})`)
+      }
   } catch (e: any) {
     statsErrs = [`buildStats threw: ${e.message}`]
   }
